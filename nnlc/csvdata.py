@@ -1,0 +1,32 @@
+"""edgepilot `extract_lateral_dataset` CSV를 읽는다(경로마다 하나, 행 = ControlState 하나, 약 100 Hz).
+
+처음 읽을 때 같은 이름의 .npy(문자열 열 block을 뺀 float32)로 저장해 다음부터 빨리 읽는다.
+"""
+from pathlib import Path
+
+import numpy as np
+
+# CSV 열(4번 block은 문자열이라 읽지 않는다)
+COLS = ["t", "v", "active", "desire", "angle", "driver_tq", "apply_tq", "tq_norm", "des_tq_norm", "lat", "lat_valid",
+        "yaw", "long", "bank", "roll", "des_curv", "act_curv", "des_la", "la_p03", "la_p06", "la_p10", "la_p15",
+        "roll_p03", "roll_p06", "roll_p10", "roll_p15", "model_age", "toi_active", "steer_fault", "blinker", "brake",
+        "gas", "eps_str_tq", "eps_out_tq"]
+USECOLS = [i for i in range(len(COLS) + 1) if i != 4]
+
+
+def load(csv: Path) -> dict[str, np.ndarray]:
+    cache = csv.with_suffix(".npy")
+    if cache.exists() and cache.stat().st_mtime > csv.stat().st_mtime:
+        a = np.load(cache)
+    else:
+        a = np.loadtxt(csv, delimiter=",", skiprows=1, usecols=USECOLS, dtype=np.float32)
+        np.save(cache, a)
+    return {name: a[:, i] for i, name in enumerate(COLS)}
+
+
+def usable_mask(d: dict[str, np.ndarray], driver_thr: float = 100.0) -> np.ndarray:
+    """학습에 쓸 행: 조향 활성 + EPS가 LKAS 토크를 받는 중 + EPS 고장 아님 + 차선 변경·깜빡이 없음 +
+    운전자 토크 |driver_tq| < 문턱 + 속도 > 3 m/s + ESP12 횡가속 유효 + 모델 계획이 0.2 s 안에 있음."""
+    return ((d["active"] == 1) & (d["toi_active"] == 1) & (d["steer_fault"] == 0) & (d["desire"] == 0) &
+            (d["blinker"] == 0) & (np.abs(d["driver_tq"]) < driver_thr) & (d["v"] > 3.0) & (d["lat_valid"] == 1) &
+            (d["model_age"] >= 0) & (d["model_age"] < 0.2) & np.isfinite(d["la_p15"]))
