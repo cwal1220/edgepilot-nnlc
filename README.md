@@ -29,7 +29,7 @@ flowchart LR
 | `nnlc/dataset.py` | builds samples (`Spec`: lag, windows, extra inputs) and the left/right mirror |
 | `nnlc/models.py` | the MLP, sunnypilot's network shape, and the linear baseline |
 | `nnlc/training.py` | training, sample weights and route-level cross-validation |
-| `nnlc/configs.py` | every configuration compared on 2026-10-16, and the chosen one |
+| `nnlc/configs.py` | the configurations in the results table, and the chosen one |
 | `nnlc/export.py` | the model file edgepilot reads, and a numpy reference evaluator |
 | `scripts/` | command-line steps (below) |
 | `tests/` | sample alignment, mirroring and export round-trip |
@@ -64,13 +64,13 @@ takes 10–20 s on an M5.
 3. Compare training setups with route-level 5-fold cross-validation:
 
    ```sh
-   .venv/bin/python scripts/experiments.py data runs/exp.json "A + mirror" "base mlp32 tanh"
+   .venv/bin/python scripts/experiments.py data runs/exp.json
    ```
 
 4. Train the chosen setup on every route and export it:
 
    ```sh
-   .venv/bin/python scripts/train_final.py data models/k7_hev_v1.json
+   .venv/bin/python scripts/train_final.py data models/k7_hev_v2.json
    ```
 
 5. Run the tests:
@@ -83,13 +83,13 @@ takes 10–20 s on an M5.
 
 - **Target:** the torque edgepilot sent at time t (`tq_norm`: sign-corrected,
   divided by `steer_max`).
-- **Inputs:** taken at the response time t + lag (0.3 s), with windows counted
-  from there.
-  - Speed, lateral acceleration `la = actual curvature × v²`, its jerk, and
-    road roll.
+- **Inputs:** counted from the response time t + lag (0.3 s), except the
+  speed, which is taken at t.
+  - Lateral acceleration `la = actual curvature × v²`, its jerk, and road
+    roll.
   - `la` at −0.5…+1.5 s (13 points) and roll at −0.3…+1.5 s (7 points).
-  - Steering angle now and at −0.3…+1.5 s (7 points), and longitudinal
-    acceleration.
+  - Steering angle at the response time and at −0.3…+1.5 s (7 points), and
+    longitudinal acceleration.
 
   The controller's actual curvature comes from the steering angle through the
   vehicle model, as in upstream openpilot.
@@ -107,29 +107,39 @@ takes 10–20 s on an M5.
 ## Results (2026-10-16)
 
 The data is 26 drives from 2026-09-25 to 10-15: 11.5 h recorded, 9.0 h with
-lateral control active, and 7.2 h usable. Most of it is 36–108 km/h with
-|la| < 1 m/s². Only about 3 minutes are above 1.5 m/s².
+lateral control active, and 7.8 h usable (25 drives give samples). Most of it
+is 36–108 km/h with |la| < 1 m/s². Only about 3 minutes are above 1.5 m/s².
 
-Cross-validation leaves out whole drives in five folds. The table gives the
-torque RMSE (fraction of `steer_max`) averaged over the folds, against a
+Cross-validation sorts the drives by date and splits them into five folds of
+similar size, so every drive is held out once. The table gives the torque
+RMSE (fraction of `steer_max`) averaged over the folds, against a
 torqued-style linear model `a·la + b·roll + c·friction + d` fitted on the same
-folds.
+folds (0.0604 overall, 0.1187 at |la| ≥ 1).
 
 | Setup | RMSE | \|la\| ≥ 1 | vs linear |
 | --- | ---: | ---: | ---: |
-| sunnypilot network (18 inputs, sigmoid) | 0.0511 | 0.0956 | +15 % |
-| MLP 32×32 tanh, sunnypilot's 18 inputs | 0.0479 | 0.0873 | +20 % |
-| + steering-angle window, denser `la` window, longitudinal accel (33 inputs) | 0.0430 | 0.0805 | +28 % |
-| **+ mirror augmentation (chosen)** | **0.0425** | **0.0761** | **+29 %** (+34 % at \|la\| ≥ 1) |
+| sunnypilot network (18 inputs, sigmoid) | 0.0506 | 0.0951 | +16 % |
+| MLP 32×32 tanh, sunnypilot's 18 inputs | 0.0479 | 0.0895 | +21 % |
+| + steering-angle window, denser `la` window, longitudinal accel (33 inputs) | 0.0429 | 0.0830 | +29 % |
+| + mirror augmentation | 0.0423 | 0.0808 | +30 % |
+| **+ three nets averaged (chosen, `k7_hev_v2`)** | **0.0414** | **0.0777** | **+31 %** (+35 % at \|la\| ≥ 1) |
 
-What did not help: network size alone, SiLU, Huber loss, sample weighting,
-weight decay, 50 Hz sampling, training only on cleaner data, and the driver
-torque as an input. A linear-plus-MLP model and sunnypilot's network were
-worse. Dropping the past `la` window costs the most.
+The study of 2026-10-16 also tried these, on the earlier extraction and folds
+(their configurations are in commit 46f08f5):
+
+- **No real effect:** network size alone, SiLU, Huber loss, sample
+  weighting, weight decay, 50 Hz sampling, training only on cleaner data, and
+  the driver torque as an input.
+- **Worse:** a linear-plus-MLP model and sunnypilot's network.
+- **Costs the most to remove:** the past `la` window.
 
 Without the mirror, a larger model flattened out at 30 m/s for positive `la`,
 outside the data. With it, the steady-state curves are monotonic and symmetric
-about a small straight-driving bias (+0.03, likely road crown) at every speed.
+about a small straight-driving bias (+0.03) at every speed.
+
+`models/k7_hev_v1.json` is the first model, trained on the CSVs read in file
+order. That order dropped 13 % of the samples (see edgepilot
+`docs/diagnostics.md`).
 
 ## Model file
 
@@ -139,11 +149,21 @@ about a small straight-driving bias (+0.03, likely road crown) at every speed.
   their own units.
 - `input_mean`, `input_std`: inputs are normalised as `(x − mean) / std`.
 - `nets`: an ensemble; each has `layers` with `weight` [out][in], `bias` and
-  `activation` (`tanh`, `silu` or `linear`). The outputs are averaged, then
-  clipped to `output_clip`.
+  `activation` (`tanh` or `linear`). The outputs are averaged, then clipped to
+  `output_clip`.
 - `linear`, `angle_model`: the linear baseline and the fitted
   `angle = a·la/v² + b·la + c`, for checks.
-- `test_vectors`: inputs and expected outputs for a C++ unit test.
+- `test_vectors`: inputs and expected outputs. edgepilot evaluates them when
+  it loads the file and refuses it if any differs.
+- `input_tests`: a synthetic trajectory and the inputs `dataset.rows` builds
+  from it. edgepilot's unit test feeds the trajectory to its run-time input
+  code and expects the same inputs.
+
+The file is strict JSON: a metric without a value is `null`, never `NaN`,
+which edgepilot's reader refuses. `train_final.py` stops before training a
+configuration edgepilot cannot read: anything but the MLP, extra inputs other
+than angle and longitudinal acceleration, or windows reaching beyond its 1 s
+history or its plan.
 
 At run time the response-time inputs come from the desired trajectory:
 
@@ -152,7 +172,8 @@ At run time the response-time inputs come from the desired trajectory:
 - **Angle:** from the inverse vehicle model with the live steer ratio,
   stiffness and angle offset. Training `la` was computed from the angle the
   same way.
-- **Roll, longitudinal accel, speed:** the current values.
+- **Roll, longitudinal accel, speed:** the current values. Training took the
+  speed at t, but the longitudinal accel at the response time.
 
 ## Caveats
 
@@ -163,5 +184,10 @@ At run time the response-time inputs come from the desired trajectory:
   curves sane there, but their accuracy is unverified. Engaged drives on ramps
   and winding roads would help.
 - The torque-to-angle delay measured from the data is 0.1–0.3 s, while
-  edgepilot's learned lateral delay is about 0.55 s. The runtime has to pick
-  which plan time feeds the model.
+  edgepilot's learned lateral delay is about 0.55 s. The runtime reads the plan
+  at the model's own offsets.
+- Speeds below 3 m/s are not in the data; edgepilot falls back to its linear
+  feed-forward there.
+- The mirror flips angles about one zero fitted over all drives, though each
+  drive's zero differs by up to 0.5°; fitting it per drive changed nothing
+  measurable.

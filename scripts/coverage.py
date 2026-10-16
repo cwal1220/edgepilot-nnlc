@@ -1,6 +1,9 @@
 """경로마다 시간과, 학습에 쓸 만한 표본이 속도 × |횡가속| 격자에 얼마나 있는지 센다.
 
   python scripts/coverage.py <csv dir> [운전자 토크 문턱(기본 100)]
+
+부호 확인도 한다: 보낸 토크와 횡가속(쓸 수 있는 행), 보낸 토크와 MDPS가 실제로 낸 토크(EPS가 받는 행)의 상관은
+양수여야 한다. 음수면 추출기의 부호나 MDPS12 필드가 틀린 것이라 경고한다. 횡가속은 제어 부호(오른쪽이 양수)다.
 """
 import sys
 from pathlib import Path
@@ -21,7 +24,9 @@ def main():
     grid = np.zeros((len(V_EDGES) - 1, len(LA_EDGES) - 1))
     side, tq_hist = np.zeros(2), np.zeros(len(TQ_EDGES) - 1)
     total = np.zeros(4)
-    print(f"{'route':26s} {'hours':>6s} {'active':>7s} {'EPS on':>7s} {'usable':>7s} {'override%':>9s}")
+    print(f"{'route':26s} {'hours':>6s} {'active':>7s} {'EPS on':>7s} {'usable':>7s} {'override%':>9s} "
+          f"{'tq~la':>6s} {'tq~eps':>6s}")
+    suspicious = []
     for csv in sorted(root.glob("*.csv")):
         d = load(csv)
         t = d["t"]
@@ -35,9 +40,14 @@ def main():
         override = act & (np.abs(d["driver_tq"]) >= driver_thr)
         hours = np.array([dt.sum(), dt[act].sum(), dt[eps].sum(), dt[use].sum()]) / 3600
         total += hours
-        print(f"{csv.stem:26s} {hours[0]:6.2f} {hours[1]:7.2f} {hours[2]:7.2f} {hours[3]:7.2f} "
-              f"{100 * dt[override].sum() / max(dt[act].sum(), 1e-9):9.1f}")
         la = d["act_curv"] * d["v"] ** 2
+        out_ok = eps & (d["eps_out_tq"] != 0)  # 0은 MDPS12가 낡았을 때
+        corr = [np.corrcoef(a[m], b[m])[0, 1] if m.sum() > 100 else np.nan
+                for a, b, m in ((d["tq_norm"], la, use), (d["apply_tq"], d["eps_out_tq"], out_ok))]
+        if any(c <= 0 for c in corr):
+            suspicious.append(csv.stem)
+        print(f"{csv.stem:26s} {hours[0]:6.2f} {hours[1]:7.2f} {hours[2]:7.2f} {hours[3]:7.2f} "
+              f"{100 * dt[override].sum() / max(dt[act].sum(), 1e-9):9.1f} {corr[0]:+6.2f} {corr[1]:+6.2f}")
         vi, li = np.digitize(d["v"], V_EDGES) - 1, np.digitize(np.abs(la), LA_EDGES) - 1
         ok = use & (vi >= 0) & (vi < grid.shape[0]) & (li >= 0) & (li < grid.shape[1])
         np.add.at(grid, (vi[ok], li[ok]), dt[ok])
@@ -49,8 +59,10 @@ def main():
     print(f"{'v / |la|':>9s} " + " ".join(f"{f'{a}-{b}' if b < 99 else f'{a}+':>8s}" for a, b in zip(LA_EDGES, LA_EDGES[1:])))
     for i, (a, b) in enumerate(zip(V_EDGES, V_EDGES[1:])):
         print(f"{f'{a}-{b}':>9s} " + " ".join(f"{m:8.1f}" for m in grid[i] / 60))
-    print(f"\n|횡가속| > 0.5에서 왼쪽 {side[0] / 60:.0f}분, 오른쪽 {side[1] / 60:.0f}분")
+    print(f"\n|횡가속| > 0.5에서 오른쪽 {side[0] / 60:.0f}분, 왼쪽 {side[1] / 60:.0f}분")
     print("|토크 명령| 분포(분):", " ".join(f"{a}-{b}: {m / 60:.0f}" for a, b, m in zip(TQ_EDGES, TQ_EDGES[1:], tq_hist)))
+    if suspicious:
+        print("\n경고: 토크 부호 상관이 0 이하인 경로:", ", ".join(suspicious))
 
 
 if __name__ == "__main__":

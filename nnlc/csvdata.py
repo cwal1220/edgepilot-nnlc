@@ -1,6 +1,7 @@
 """edgepilot `extract_lateral_dataset` CSV를 읽는다(경로마다 하나, 행 = ControlState 하나, 약 100 Hz).
 
-처음 읽을 때 같은 이름의 .npy(문자열 열 block을 뺀 float32)로 저장해 다음부터 빨리 읽는다.
+처음 읽을 때 같은 이름의 .npy(문자열 열 block을 뺀 float32)로 저장해 다음부터 빨리 읽는다. 머리줄이 COLS와 다르면
+(추출기의 열이 바뀌었으면) 다시 추출하라고 멈춘다. 열을 자리로 읽으므로 이름이 밀리면 값이 엉뚱한 열로 간다.
 """
 from pathlib import Path
 
@@ -9,17 +10,23 @@ import numpy as np
 # CSV 열(4번 block은 문자열이라 읽지 않는다)
 COLS = ["t", "v", "active", "desire", "angle", "driver_tq", "apply_tq", "tq_norm", "des_tq_norm", "lat", "lat_valid",
         "yaw", "long", "bank", "roll", "des_curv", "act_curv", "des_la", "la_p03", "la_p06", "la_p10", "la_p15",
-        "roll_p03", "roll_p06", "roll_p10", "roll_p15", "model_age", "toi_active", "steer_fault", "blinker", "brake",
-        "gas", "eps_str_tq", "eps_out_tq"]
-USECOLS = [i for i in range(len(COLS) + 1) if i != 4]
+        "roll_p03", "roll_p06", "roll_p10", "roll_p15", "model_age", "toi_active", "steer_fault", "blinker",
+        "eps_out_tq"]
+HEADER = COLS[:4] + ["block"] + COLS[4:]
+USECOLS = [i for i in range(len(HEADER)) if i != 4]
 
 
 def load(csv: Path) -> dict[str, np.ndarray]:
+    with csv.open() as f:
+        header = f.readline().strip().split(",")
+    if header != HEADER:
+        raise ValueError(f"{csv}: columns differ from nnlc.csvdata.COLS, re-extract with the current extractor")
     cache = csv.with_suffix(".npy")
-    if cache.exists() and cache.stat().st_mtime > csv.stat().st_mtime:
-        a = np.load(cache)
-    else:
-        a = np.loadtxt(csv, delimiter=",", skiprows=1, usecols=USECOLS, dtype=np.float32)
+    a = np.load(cache) if cache.exists() and cache.stat().st_mtime > csv.stat().st_mtime else None
+    if a is None or a.ndim != 2 or a.shape[1] != len(COLS):
+        a = np.loadtxt(csv, delimiter=",", skiprows=1, usecols=USECOLS, dtype=np.float32, ndmin=2)
+        if a.shape[1] != len(COLS):  # 행이 없는 파일(머리줄만)
+            a = np.zeros((0, len(COLS)), np.float32)
         np.save(cache, a)
     return {name: a[:, i] for i, name in enumerate(COLS)}
 

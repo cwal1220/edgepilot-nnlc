@@ -1,8 +1,9 @@
 """고른 설정을 전체 주행으로 학습해 edgepilot 모델 파일로 내보내고, 정상 상태 곡선을 보인다.
 
-  python scripts/train_final.py <csv dir> <모델 json> [설정 이름(기본 nnlc.configs.CHOSEN)] [--seeds N]
+  python scripts/train_final.py <csv dir> <모델 json> [설정 이름(기본 nnlc.configs.CHOSEN)] [--no-cv]
 
-- 망은 시드마다 하나씩 N개(기본 3) 학습해 앙상블로 넣는다.
+- 망은 설정의 ensemble 수만큼 시드마다 하나씩 학습해 앙상블로 넣는다. 교차 검증도 같은 수로 한다.
+- 내보낼 수 없는 설정(sunnypilot 꼴 등)은 학습 전에 멈춘다.
 - 정상 상태 곡선: 일정한 커브(창 전체가 같은 횡가속, 저크·롤·종가속 0)에서 필요한 토크. 조향각 입력은 데이터에서 맞춘
   조향각 = a·la/v² + b·la + c로 만든다. 좌우 대칭과 단조 증가를 눈으로 확인한다.
 """
@@ -38,22 +39,22 @@ def main():
     ap.add_argument("csv_dir", type=Path)
     ap.add_argument("out", type=Path)
     ap.add_argument("config", nargs="?", default=CHOSEN)
-    ap.add_argument("--seeds", type=int, default=3)
     ap.add_argument("--no-cv", action="store_true", help="교차 검증 지표를 다시 계산하지 않는다")
     args = ap.parse_args()
     cfg = CONFIGS[args.config]
+    export.check_exportable(cfg)
     x, y, names, _ = dataset(str(args.csv_dir), cfg.spec)
-    trained = train(cfg, x, y, n_seeds=args.seeds)
+    trained = train(cfg, x, y)
     cv = None if args.no_cv else cross_validate(args.csv_dir, cfg)
     meta = {"training": {"config": args.config, "samples": int(len(x)), "routes": sorted(set(names.tolist())),
-                         "seeds": args.seeds, "cv": cv}}
+                         "nets": cfg.ensemble, "cv": cv}}
     model = export.to_json(trained, cfg.spec, args.out.stem, x, meta)
     export.save(model, args.out)
     # 내보낸 파일이 학습한 망과 같은 값을 내는지
     reloaded = export.load(args.out)
     probe_x = x[:: max(1, len(x) // 2000)]
     diff = np.abs(export.evaluate(reloaded, probe_x) - np.clip(evaluate(trained, probe_x), -1, 1)).max()
-    print(f"{args.out}: {len(x)} samples, {args.seeds} nets, export max diff {diff:.2e}")
+    print(f"{args.out}: {len(x)} samples, {cfg.ensemble} nets, export max diff {diff:.2e}")
     if cv:
         print(f"CV RMSE {cv['model']:.4f} ({cv['gain']:+.1%} vs linear), |la|>=1 {cv['model_10']:.4f} "
               f"({cv['gain_10']:+.1%})")

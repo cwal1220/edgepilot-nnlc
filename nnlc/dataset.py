@@ -22,7 +22,7 @@ class Spec:
     la_future: tuple = (0.3, 0.6, 1.0, 1.5)
     roll_past: tuple = (-0.3, -0.2, -0.1)
     roll_future: tuple = (0.3, 0.6, 1.0, 1.5)
-    extra: tuple = ()          # 응답 시각의 열 값: long(종가속), angle(조향각), driver_tq(운전자 토크) 등
+    extra: tuple = ()          # 응답 시각의 열 값: long(종가속), angle(조향각)
     extra_windows: tuple = ()  # (열 이름, 오프셋들), 예: (("angle", (-0.3, 0.3, 1.0)),)
     stride: int = 5
     driver_thr: float = 100.0
@@ -43,8 +43,22 @@ def _steps(offsets) -> list[int]:
     return [int(round(p / DT)) for p in offsets]
 
 
-def build(csv_dir: Path, routes: list[str] | None, spec: Spec = SP18):
-    """(X [n, f] float32, y [n], 경로 이름 [n], 표본 시각 [n]). routes가 None이면 전부."""
+def rows(c: dict[str, np.ndarray], idx: np.ndarray, spec: Spec) -> np.ndarray:
+    """100 Hz 열(c: v, la, jerk, roll, 추가 입력)에서 표본 시각 idx의 입력 [len(idx), f]. 응답 시각은 idx + lag이고
+    창은 거기서 센다(속도만 표본 시각 값). edgepilot 운용 입력과의 대조(export.input_tests)도 이것을 쓴다."""
+    lag = int(round(spec.lag_s / DT))
+    r = idx + lag
+    la, roll = c["la"], c["roll"]
+    cols = [c["v"][idx], la[r], c["jerk"][r], roll[r]]
+    cols += [la[r + p] for p in _steps(spec.la_past + spec.la_future)]
+    cols += [roll[r + p] for p in _steps(spec.roll_past + spec.roll_future)]
+    cols += [c[e][r] for e in spec.extra]
+    cols += [c[col][r + o] for col, offs in spec.extra_windows for o in _steps(offs)]
+    return np.stack(cols, 1).astype(np.float32)
+
+
+def build(csv_dir: Path, spec: Spec = SP18):
+    """폴더의 모든 경로에서 (X [n, f] float32, y [n], 경로 이름 [n], 표본 시각 [n])."""
     lag = int(round(spec.lag_s / DT))
     lp, lf, rp, rf = _steps(spec.la_past), _steps(spec.la_future), _steps(spec.roll_past), _steps(spec.roll_future)
     ew = [(col, _steps(offs)) for col, offs in spec.extra_windows]
@@ -52,8 +66,6 @@ def build(csv_dir: Path, routes: list[str] | None, spec: Spec = SP18):
     lo, hi = min(every), max(every)
     xs, ys, names, times = [], [], [], []
     for csv in sorted(Path(csv_dir).glob("*.csv")):
-        if routes is not None and csv.stem not in routes:
-            continue
         for sg in segments(csv, spec.driver_thr):
             c = sg.cols
             n = len(sg.t)
@@ -67,17 +79,14 @@ def build(csv_dir: Path, routes: list[str] | None, spec: Spec = SP18):
             idx, r = idx[ok], r[ok]
             if len(idx) == 0:
                 continue
-            la, roll = c["la"], c["roll"]
-            cols = [c["v"][idx], la[r], c["jerk"][r], roll[r]]
-            cols += [la[r + p] for p in lp + lf] + [roll[r + p] for p in rp + rf]
-            cols += [c[e][r] for e in spec.extra]
-            cols += [c[col][r + o] for col, offs in ew for o in offs]
-            x = np.stack(cols, 1).astype(np.float32)
+            x = rows(c, idx, spec)
             good = np.isfinite(x).all(1) & np.isfinite(c["tq_norm"][idx])
             xs.append(x[good])
             ys.append(c["tq_norm"][idx][good].astype(np.float32))
             names += [sg.route] * int(good.sum())
             times.append(sg.t[idx][good])
+    if not xs:
+        raise ValueError(f"{csv_dir}: no usable samples")
     return np.concatenate(xs), np.concatenate(ys), np.array(names), np.concatenate(times)
 
 

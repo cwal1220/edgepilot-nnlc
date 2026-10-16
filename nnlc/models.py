@@ -1,6 +1,6 @@
 """토크 모델: 신경망 두 가지와 비교용 선형 모델.
 
-- Mlp: 은닉층 tanh(또는 SiLU) MLP. wide=True면 입력의 선형 항을 더한다(실험에서 더 나빴다).
+- Mlp: 은닉층 tanh MLP. edgepilot이 읽는 모델(export)은 이것뿐이다.
 - SpNet: sunnypilot NNTorqueModel 꼴(18→7→13→3→1, σ, σ, 항등, 항등). 비교용.
 - torqued식 선형: y = a·la + b·roll + c·clip(jerk/0.5, ±1) + d. 지금 제어기의 피드포워드 꼴이다.
 """
@@ -10,21 +10,17 @@ from torch import nn
 
 
 class Mlp(nn.Module):
-    def __init__(self, n_in: int, hidden=(32, 32), act: str = "tanh", wide: bool = False):
+    def __init__(self, n_in: int, hidden=(32, 32)):
         super().__init__()
-        act_cls = {"tanh": nn.Tanh, "silu": nn.SiLU}[act]
         layers, k = [], n_in
         for h in hidden:
-            layers += [nn.Linear(k, h), act_cls()]
+            layers += [nn.Linear(k, h), nn.Tanh()]
             k = h
         layers.append(nn.Linear(k, 1))
         self.mlp = nn.Sequential(*layers)
-        self.linear = nn.Linear(n_in, 1) if wide else None
-        self.act = act
 
     def forward(self, x):
-        y = self.mlp(x)
-        return y + self.linear(x) if self.linear is not None else y
+        return self.mlp(x)
 
 
 class SpNet(nn.Module):
