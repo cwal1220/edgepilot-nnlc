@@ -1,8 +1,10 @@
-"""edgepilot `extract_lateral_dataset` CSV를 읽는다(경로마다 하나, 행 = ControlState 하나, 약 100 Hz).
+"""edgepilot `extract_lateral_dataset` CSV를 읽는다(경로마다 하나, 행 = ControlState 하나, 약 100 Hz). 열 정의는
+docs/data-format.md. gzip으로 묶은 <경로>.csv.gz도 그대로 읽는다(저장소의 dataset/).
 
-처음 읽을 때 같은 이름의 .npy(문자열 열 block을 뺀 float32)로 저장해 다음부터 빨리 읽는다. 머리줄이 COLS와 다르면
+처음 읽을 때 <경로>.npy(문자열 열 block을 뺀 float32)로 저장해 다음부터 빨리 읽는다. 머리줄이 COLS와 다르면
 (추출기의 열이 바뀌었으면) 다시 추출하라고 멈춘다. 열을 자리로 읽으므로 이름이 밀리면 값이 엉뚱한 열로 간다.
 """
+import gzip
 from pathlib import Path
 
 import numpy as np
@@ -16,12 +18,27 @@ HEADER = COLS[:4] + ["block"] + COLS[4:]
 USECOLS = [i for i in range(len(HEADER)) if i != 4]
 
 
+def route_name(csv: Path) -> str:
+    """<경로>.csv 또는 <경로>.csv.gz의 경로 이름."""
+    name = csv.name
+    return name[:-len(".csv.gz")] if name.endswith(".csv.gz") else csv.stem
+
+
+def route_files(csv_dir: Path) -> list[Path]:
+    """폴더의 경로 CSV(.csv, .csv.gz), 이름순. 같은 경로가 둘 다 있으면 .csv를 쓴다."""
+    files = {}
+    for path in sorted(Path(csv_dir).glob("*.csv.gz")) + sorted(Path(csv_dir).glob("*.csv")):
+        files[route_name(path)] = path
+    return [files[k] for k in sorted(files)]
+
+
 def load(csv: Path) -> dict[str, np.ndarray]:
-    with csv.open() as f:
+    opener = gzip.open if csv.name.endswith(".gz") else open
+    with opener(csv, "rt") as f:
         header = f.readline().strip().split(",")
     if header != HEADER:
         raise ValueError(f"{csv}: columns differ from nnlc.csvdata.COLS, re-extract with the current extractor")
-    cache = csv.with_suffix(".npy")
+    cache = csv.with_name(route_name(csv) + ".npy")
     a = np.load(cache) if cache.exists() and cache.stat().st_mtime > csv.stat().st_mtime else None
     if a is None or a.ndim != 2 or a.shape[1] != len(COLS):
         a = np.loadtxt(csv, delimiter=",", skiprows=1, usecols=USECOLS, dtype=np.float32, ndmin=2)

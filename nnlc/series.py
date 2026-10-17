@@ -12,7 +12,7 @@ from pathlib import Path
 
 import numpy as np
 
-from nnlc.csvdata import load, usable_mask
+from nnlc.csvdata import load, route_name, usable_mask
 from nnlc.friction import curve_weight, friction_share
 
 DT = 0.01
@@ -58,7 +58,7 @@ def segments(csv: Path, driver_thr: float = 100.0, min_len_s: float = 3.0) -> li
         cols["jerk"] = jerk_of(cols["la"])
         cols["fric"] = friction_share(cols["des_curv"], cols["act_curv"], v)
         cols["curve_w"] = curve_weight(cols["des_curv"], v)
-        out.append(Segment(csv.stem, grid, cols))
+        out.append(Segment(route_name(csv), grid, cols))
     return out
 
 

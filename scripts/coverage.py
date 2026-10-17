@@ -11,7 +11,7 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from nnlc.csvdata import load, usable_mask  # noqa: E402
+from nnlc.csvdata import load, route_files, route_name, usable_mask  # noqa: E402
 
 V_EDGES = [3, 10, 15, 20, 25, 30, 40]  # m/s
 LA_EDGES = [0, 0.25, 0.5, 1.0, 1.5, 2.0, 3.0, 99]  # m/s²
@@ -27,7 +27,7 @@ def main():
     print(f"{'route':26s} {'hours':>6s} {'active':>7s} {'EPS on':>7s} {'usable':>7s} {'override%':>9s} "
           f"{'tq~la':>6s} {'tq~eps':>6s}")
     suspicious = []
-    for csv in sorted(root.glob("*.csv")):
+    for csv in route_files(root):
         d = load(csv)
         t = d["t"]
         if len(t) < 100:
@@ -45,8 +45,8 @@ def main():
         corr = [np.corrcoef(a[m], b[m])[0, 1] if m.sum() > 100 else np.nan
                 for a, b, m in ((d["tq_norm"], la, use), (d["apply_tq"], d["eps_out_tq"], out_ok))]
         if any(c <= 0 for c in corr):
-            suspicious.append(csv.stem)
-        print(f"{csv.stem:26s} {hours[0]:6.2f} {hours[1]:7.2f} {hours[2]:7.2f} {hours[3]:7.2f} "
+            suspicious.append(route_name(csv))
+        print(f"{route_name(csv):26s} {hours[0]:6.2f} {hours[1]:7.2f} {hours[2]:7.2f} {hours[3]:7.2f} "
               f"{100 * dt[override].sum() / max(dt[act].sum(), 1e-9):9.1f} {corr[0]:+6.2f} {corr[1]:+6.2f}")
         vi, li = np.digitize(d["v"], V_EDGES) - 1, np.digitize(np.abs(la), LA_EDGES) - 1
         ok = use & (vi >= 0) & (vi < grid.shape[0]) & (li >= 0) & (li < grid.shape[1])

@@ -13,6 +13,7 @@ from pathlib import Path
 
 import numpy as np
 
+from nnlc.csvdata import route_files
 from nnlc.series import DT, segments
 
 
@@ -67,7 +68,7 @@ def build(csv_dir: Path, spec: Spec = SP18):
     every = lp + lf + rp + rf + [o for _, offs in ew for o in offs] + [0]
     lo, hi = min(every), max(every)
     xs, ys, names, times = [], [], [], []
-    for csv in sorted(Path(csv_dir).glob("*.csv")):
+    for csv in route_files(Path(csv_dir)):
         for sg in segments(csv, spec.driver_thr):
             c = sg.cols
             n = len(sg.t)

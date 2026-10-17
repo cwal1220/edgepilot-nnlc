@@ -109,3 +109,31 @@ class DatasetTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class GzipCsvTest(unittest.TestCase):
+    def test_gzipped_csv_reads_like_the_plain_one(self):
+        import gzip
+        import shutil
+
+        from nnlc.csvdata import load, route_files, route_name
+        with tempfile.TemporaryDirectory() as d:
+            plain = Path(d) / "plain" / "2026-01-01--00-00-00-000.csv"
+            plain.parent.mkdir()
+            write_csv(plain)
+            packed = Path(d) / "packed" / "2026-01-01--00-00-00-000.csv.gz"
+            packed.parent.mkdir()
+            with plain.open("rb") as src, gzip.open(packed, "wb") as dst:
+                shutil.copyfileobj(src, dst)
+            self.assertEqual(route_name(packed), "2026-01-01--00-00-00-000")
+            a, b = load(plain), load(packed)
+            for k in a:
+                np.testing.assert_array_equal(a[k], b[k])
+            self.assertTrue((packed.parent / "2026-01-01--00-00-00-000.npy").exists())  # 캐시 이름에 .csv가 붙지 않는다
+            shutil.copy(plain, packed.parent / plain.name)  # 같은 경로가 둘이면 .csv 하나만
+            self.assertEqual([p.name for p in route_files(packed.parent)], [plain.name])
+            x0, y0, _, _ = build(plain.parent, CHOSEN)
+            (packed.parent / plain.name).unlink()
+            x1, y1, _, _ = build(packed.parent, CHOSEN)
+            np.testing.assert_array_equal(x0, x1)
+            np.testing.assert_array_equal(y0, y1)

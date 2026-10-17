@@ -1,9 +1,16 @@
-# nnlc
+# edgepilot-nnlc
 
-A learned steering-torque model for [edgepilot](https://github.com/cwal1220/edgepilot)
-on the Kia K7 HEV, in the style of sunnypilot's Neural Network Lateral Control
-(NNLC). sunnypilot has no model for this car, so this repository trains one
-from edgepilot's own recordings.
+The training side of [edgepilot](https://github.com/cwal1220/edgepilot)'s
+learned steering-torque feed-forward ([Lateral NN](https://github.com/cwal1220/edgepilot/blob/main/docs/lateral-nn.md)),
+in the style of sunnypilot's Neural Network Lateral Control (NNLC). edgepilot
+runs the model; this repository holds the data, trains the model and exports
+the file edgepilot loads. sunnypilot has no model for the Kia K7 HEV, so this
+one is trained from edgepilot's own drives, which are included
+([`dataset/k7_hev`](dataset/k7_hev/README.md), 7.8 h usable).
+
+- [Data format](docs/data-format.md): the CSV columns, units and signs.
+- [Training for another car](docs/other-cars.md): recording, making the CSVs
+  from edgepilot or other logs, the car values to set, the checks.
 
 The model is an inverse steering model. It looks at a lateral-acceleration
 trajectory around the moment the car responds, and gives the torque command
@@ -34,8 +41,11 @@ flowchart LR
 | `nnlc/export.py` | the model file edgepilot reads, and a numpy reference evaluator |
 | `scripts/` | command-line steps (below) |
 | `tests/` | sample alignment, mirroring, export round-trip and the friction share |
-| `models/` | exported models (tracked) |
-| `data/`, `runs/` | CSVs and experiment output (not tracked) |
+| `models/` | exported models (`k7_hev_v3` is the one edgepilot ships) |
+| `dataset/k7_hev/` | the K7 HEV drives, one gzipped CSV each |
+| `docs/` | the data format and the guide for other cars |
+| `examples/` | a quick start, a 30 s sample CSV, and a CSV writer for other logs |
+| `data/`, `runs/` | local CSVs and experiment output (not tracked) |
 
 ## Setup
 
@@ -45,33 +55,43 @@ python3 -m venv .venv
 ```
 
 PyTorch uses the Apple GPU (MPS) when it is there; one cross-validation run
-takes 10–20 s on an M5.
+takes 10–20 s on an M5. Without a GPU it runs on the CPU, more slowly.
+
+## Quick start
+
+Coverage, cross-validation of the chosen setup and a trained model file from
+the bundled data, into `runs/`:
+
+```sh
+examples/quickstart.sh
+```
 
 ## Workflow
 
-1. Build the extractor in edgepilot and turn the recordings into CSVs:
+1. Turn edgepilot recordings into CSVs (for other logs see
+   [Training for another car](docs/other-cars.md)):
 
    ```sh
    cmake --build ../edgepilot/build-host --target extract_lateral_dataset -j4
-   scripts/extract_routes.sh ../edgepilot/build-host ../experiments data
+   scripts/extract_routes.sh ../edgepilot/build-host <recordings dir> dataset/<car>
    ```
 
-2. See how much usable data there is:
+2. See how much usable data there is, and check the signs:
 
    ```sh
-   .venv/bin/python scripts/coverage.py data
+   .venv/bin/python scripts/coverage.py dataset/k7_hev
    ```
 
 3. Compare training setups with route-level 5-fold cross-validation:
 
    ```sh
-   .venv/bin/python scripts/experiments.py data runs/exp.json
+   .venv/bin/python scripts/experiments.py dataset/k7_hev runs/exp.json
    ```
 
 4. Train the chosen setup on every route and export it:
 
    ```sh
-   .venv/bin/python scripts/train_final.py data models/k7_hev_v3.json
+   .venv/bin/python scripts/train_final.py dataset/k7_hev models/k7_hev_v3.json
    ```
 
 5. Run the tests:
@@ -175,7 +195,10 @@ order. That order dropped 13 % of the samples (see edgepilot
 
 ## Model file
 
-`models/*.json`, format `edgepilot-lateral-nn` version 1 (`nnlc/export.py`):
+`models/<car>_v<version>.json`, format `edgepilot-lateral-nn` version 1
+(`nnlc/export.py`). edgepilot keeps the same names in `models/lateral_nn/`;
+its web console lists them by file name and switches between them.
+
 
 - `features` and `spec`: input order and window definition. Inputs go in
   their own units.
