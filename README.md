@@ -27,12 +27,13 @@ flowchart LR
 | `nnlc/csvdata.py` | reads the extractor CSVs and picks usable rows |
 | `nnlc/series.py` | resamples each route to 100 Hz continuous segments |
 | `nnlc/dataset.py` | builds samples (`Spec`: lag, windows, extra inputs) and the left/right mirror |
+| `nnlc/friction.py` | edgepilot's friction compensation share, recomputed from the recorded curvatures |
 | `nnlc/models.py` | the MLP, sunnypilot's network shape, and the linear baseline |
 | `nnlc/training.py` | training, sample weights and route-level cross-validation |
 | `nnlc/configs.py` | the configurations in the results table, and the chosen one |
 | `nnlc/export.py` | the model file edgepilot reads, and a numpy reference evaluator |
 | `scripts/` | command-line steps (below) |
-| `tests/` | sample alignment, mirroring and export round-trip |
+| `tests/` | sample alignment, mirroring, export round-trip and the friction share |
 | `models/` | exported models (tracked) |
 | `data/`, `runs/` | CSVs and experiment output (not tracked) |
 
@@ -70,7 +71,7 @@ takes 10–20 s on an M5.
 4. Train the chosen setup on every route and export it:
 
    ```sh
-   .venv/bin/python scripts/train_final.py data models/k7_hev_v2.json
+   .venv/bin/python scripts/train_final.py data models/k7_hev_v3.json
    ```
 
 5. Run the tests:
@@ -82,7 +83,9 @@ takes 10–20 s on an M5.
 ## Samples
 
 - **Target:** the torque edgepilot sent at time t (`tq_norm`: sign-corrected,
-  divided by `steer_max`).
+  divided by `steer_max`), minus the friction share edgepilot adds to the
+  model in curves (the default, `Spec.friction_free`; see below). With
+  `friction_free=False` it is the sent torque itself, as for `k7_hev_v2`.
 - **Inputs:** counted from the response time t + lag (0.3 s), except the
   speed, which is taken at t.
   - Lateral acceleration `la = actual curvature × v²`, its jerk, and road
@@ -100,6 +103,16 @@ takes 10–20 s on an M5.
   - fresh lateral acceleration and model data.
 
   Samples are taken at 20 Hz.
+- **Friction-free target** (`Spec.friction_free`, the default; config "A +
+  mirror, 3 nets, friction-free"): edgepilot adds its friction compensation to the model in
+  curves, because the model does not see the tracking error. This target
+  subtracts that same share from the torque, so the two do not overlap.
+  `nnlc/friction.py` recomputes the share from the recorded desired and actual
+  curvature with today's runtime values (0.55 s delay, friction 0.11, 1°
+  deadzone fading 40→60 km/h). On the 10-16 route it matches the controller's
+  own value (`replay_controls --dump`, field `fr`) within 0.7 raw on average.
+  Older drives ran other controllers, so the share is what the runtime would
+  add now, not what was applied then.
 - **Mirror augmentation:** each training sample is also used flipped left to
   right. `la`, jerk and roll change sign, the angle flips about its zero, and
   the torque flips about the straight-driving bias.
@@ -122,7 +135,26 @@ folds (0.0604 overall, 0.1187 at |la| ≥ 1).
 | MLP 32×32 tanh, sunnypilot's 18 inputs | 0.0479 | 0.0895 | +21 % |
 | + steering-angle window, denser `la` window, longitudinal accel (33 inputs) | 0.0429 | 0.0830 | +29 % |
 | + mirror augmentation | 0.0423 | 0.0808 | +30 % |
-| **+ three nets averaged (chosen, `k7_hev_v2`)** | **0.0414** | **0.0777** | **+31 %** (+35 % at \|la\| ≥ 1) |
+| + three nets averaged (`k7_hev_v2`) | 0.0414 | 0.0777 | +31 % (+35 % at \|la\| ≥ 1) |
+
+These rows use the sent torque as the target (`friction_free=False`). The
+chosen setup since 2026-10-17 trains the same network on the friction-free
+target (`k7_hev_v3`). The model then needs the controller's friction term, so
+it is compared together with it. Against the torque that was sent, held out
+by the same folds (RMSE and the bias in the curve's direction, in raw torque
+units of 384, |la| ≥ 0.5):
+
+| Phase | v2 alone | v2 + curve friction | **v3 + curve friction (chosen)** |
+| --- | ---: | ---: | ---: |
+| entry | 28.0 (−1.3) | 34.3 (+11.3) | **32.3 (−0.5)** |
+| hold | 23.4 | 25.4 | **24.2** |
+| exit | 23.2 (−1.6) | 31.0 (−14.9) | **25.7 (−2.7)** |
+| straight | 14.0 | 14.0 | **14.3** |
+
+v2 with the friction counts it twice: too much torque at curve entries, too
+little at exits. v2 alone explains the sent torque best, but it cannot react
+to the tracking error, and on the 2026-10-16 drive the car fell behind at
+curve entries.
 
 The study of 2026-10-16 also tried these, on the earlier extraction and folds
 (their configurations are in commit 46f08f5):

@@ -16,13 +16,14 @@ V = 20.0
 CURV = 2.5e-4  # act_curv = CURV·t², la = CURV·V²·t² = 0.1·t²: 한 틱 어긋나면 la가 0.002·t 바뀐다
 
 
-def write_csv(path: Path, n: int = 3000) -> None:
+def write_csv(path: Path, n: int = 3000, **columns) -> None:
     """100 Hz, 일정 속도, 곡률이 시간의 제곱인 경로. 토크는 시각 값 그대로라 목표 정렬을 바로 확인할 수 있다. 종가속과
-    롤은 시간에 비례해 응답 시각에서 읽는지 볼 수 있다."""
+    롤은 시간에 비례해 응답 시각에서 읽는지 볼 수 있다. columns는 열 값(시각 배열을 받는 함수)을 바꾼다."""
     t = np.arange(n) * 0.01
     rows = {c: np.zeros(n) for c in COLS}
     rows.update(t=t, v=np.full(n, V), active=1, toi_active=1, lat_valid=1, model_age=0.05, la_p15=0.0,
                 act_curv=CURV * t ** 2, tq_norm=t, angle=-t * 2.0, long=0.01 * t, roll=0.001 * t)
+    rows.update({c: f(t) for c, f in columns.items()})
     rows = {c: np.broadcast_to(np.asarray(val, float), (n,)) for c, val in rows.items()}
     with path.open("w") as f:
         f.write(",".join(HEADER) + "\n")

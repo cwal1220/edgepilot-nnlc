@@ -3,6 +3,7 @@
 - 행 간격이 0.1 s를 넘으면 구간을 끊는다. 구간 안에서는 열마다 선형 보간한다(플래그 열은 가장 가까운 값).
 - la = act_curv · v²: 제어기의 실제 횡가속. 제어기는 조향각을 차량 모델로 곡률로 바꾼다(상류 latcontrol_torque와 같다).
 - jerk = la의 ±0.05 s 중앙차분.
+- fric, curve_w: edgepilot이 그 순간 모델에 더할 마찰 보상 몫과 곡선 가중(nnlc.friction). friction_free 학습이 쓴다.
 - 경로·운전자 토크 문턱마다 결과를 기억해 둔다(실험에서 같은 경로를 여러 번 쓴다). 26개 경로에 약 0.6 GB.
 """
 import functools
@@ -12,6 +13,7 @@ from pathlib import Path
 import numpy as np
 
 from nnlc.csvdata import load, usable_mask
+from nnlc.friction import curve_weight, friction_share
 
 DT = 0.01
 GAP_S = 0.1
@@ -54,6 +56,8 @@ def segments(csv: Path, driver_thr: float = 100.0, min_len_s: float = 3.0) -> li
         v = cols["v"]
         cols["la"] = cols["act_curv"] * v * v
         cols["jerk"] = jerk_of(cols["la"])
+        cols["fric"] = friction_share(cols["des_curv"], cols["act_curv"], v)
+        cols["curve_w"] = curve_weight(cols["des_curv"], v)
         out.append(Segment(csv.stem, grid, cols))
     return out
 

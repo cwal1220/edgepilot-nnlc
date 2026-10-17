@@ -1,6 +1,7 @@
 """학습 표본(입력 X, 목표 토크 y)을 만든다.
 
-- 목표: 표본 시각 t에 보낸 토크 tq_norm(부호 보정, steer_max로 나눈 값).
+- 목표: 표본 시각 t에 보낸 토크 tq_norm(부호 보정, steer_max로 나눈 값). friction_free면 거기서 edgepilot이 그 순간
+  모델에 더할 마찰 보상 몫(곡선 가중 × 마찰, nnlc.friction)을 뺀다: 운용은 모델 + 그 몫이라 겹치지 않는다.
 - 입력은 응답 시각 t + lag 기준이다(토크가 조향각 횡가속으로 나타나는 지연). 창(과거·미래 오프셋)도 t + lag에서 센다.
   학습은 실제로 일어난 궤적을 쓰고, 운용 때는 같은 자리에 목표 궤적을 넣는다(역동역학: 이 궤적을 만든 토크).
 - 표본은 t와 t + lag가 모두 usable이고, 창 전체가 한 연속 구간 안에 있고, 창 안에 차선 변경·깜빡이가 없을 때만
@@ -26,6 +27,7 @@ class Spec:
     extra_windows: tuple = ()  # (열 이름, 오프셋들), 예: (("angle", (-0.3, 0.3, 1.0)),)
     stride: int = 5
     driver_thr: float = 100.0
+    friction_free: bool = True  # 목표에서 운용이 더할 마찰 몫을 뺀다(nnlc.friction). False면 보낸 토크 그대로
 
     def names(self) -> list[str]:
         return (["v", "la", "jerk", "roll"] + [f"la{p:+.1f}" for p in self.la_past + self.la_future] +
@@ -80,9 +82,10 @@ def build(csv_dir: Path, spec: Spec = SP18):
             if len(idx) == 0:
                 continue
             x = rows(c, idx, spec)
-            good = np.isfinite(x).all(1) & np.isfinite(c["tq_norm"][idx])
+            y = c["tq_norm"][idx] - (c["curve_w"][idx] * c["fric"][idx] if spec.friction_free else 0.0)
+            good = np.isfinite(x).all(1) & np.isfinite(y)
             xs.append(x[good])
-            ys.append(c["tq_norm"][idx][good].astype(np.float32))
+            ys.append(y[good].astype(np.float32))
             names += [sg.route] * int(good.sum())
             times.append(sg.t[idx][good])
     if not xs:
