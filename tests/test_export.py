@@ -46,6 +46,12 @@ class ExportTest(unittest.TestCase):
         self.assertEqual(len(loaded["input_tests"][0]["inputs"]), len(feat))
         self.assertEqual(len(loaded["nets"]), 2)
         self.assertEqual([l["activation"] for l in loaded["nets"][0]["layers"]], ["tanh", "tanh", "linear"])
+        # 곡선 이득은 파일에 숫자로 남고(없으면 0), edgepilot이 받지 않는 범위는 내보내지 않는다
+        self.assertEqual(loaded["curve_gain"], 0.0)
+        self.assertEqual(export.to_json(trained, CHOSEN_SPEC, "test", x, {}, curve_gain=0.3)["curve_gain"], 0.3)
+        for bad in (-0.1, 1.5):
+            with self.assertRaises(ValueError):
+                export.to_json(trained, CHOSEN_SPEC, "test", x, {}, curve_gain=bad)
 
     def test_rejects_other_formats(self):
         with tempfile.TemporaryDirectory() as d:

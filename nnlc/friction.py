@@ -20,7 +20,7 @@ JERK_GAIN = 0.3               # kJerkGain
 JERK_LOOKAHEAD_FRAMES = 19    # kJerkLookaheadFrames
 JERK_FILTER_ALPHA = 1.0 / (1.0 + 1.0 / (2.0 * math.pi * 1.2 * DT))
 DEADZONE_FULL_MPS, DEADZONE_OFF_MPS = 40.0 / 3.6, 60.0 / 3.6
-CURVE_START, CURVE_FULL = 0.2, 0.6  # kNnFrictionStartLatAccel, kNnFrictionFullLatAccel
+CURVE_START, CURVE_FULL = 0.2, 0.6  # kNnCurveStartLatAccel, kNnCurveFullLatAccel
 
 # 운용 값(2026-10-16 보드): lagd 지연, torqued 마찰, steering.json deadzone과 K7 차량 모델
 DELAY_S = 0.55

@@ -3,6 +3,8 @@
   python scripts/train_final.py <csv dir> <모델 json> [설정 이름(기본 nnlc.configs.CHOSEN)] [--no-cv]
 
 - 망은 설정의 ensemble 수만큼 시드마다 하나씩 학습해 앙상블로 넣는다. 교차 검증도 같은 수로 한다.
+- 운용 입력으로 배우는 설정(Cfg.inputs "runtime")은 경로 CSV 옆에 <경로>.inputs.csv.gz가 있어야 한다
+  (scripts/dump_runtime_inputs.sh). 설정의 curve_gain을 모델 파일에 쓴다.
 - 내보낼 수 없는 설정(sunnypilot 꼴 등)은 학습 전에 멈춘다.
 - 정상 상태 곡선: 일정한 커브(창 전체가 같은 횡가속, 저크·롤·종가속 0)에서 필요한 토크. 조향각 입력은 데이터에서 맞춘
   조향각 = a·la/v² + b·la + c로 만든다. 좌우 대칭과 단조 증가를 눈으로 확인한다.
@@ -43,12 +45,12 @@ def main():
     args = ap.parse_args()
     cfg = CONFIGS[args.config]
     export.check_exportable(cfg)
-    x, y, names, _ = dataset(str(args.csv_dir), cfg.spec)
+    x, y, names, _ = dataset(str(args.csv_dir), cfg.spec, cfg.inputs)
     trained = train(cfg, x, y)
     cv = None if args.no_cv else cross_validate(args.csv_dir, cfg)
-    meta = {"training": {"config": args.config, "samples": int(len(x)), "routes": sorted(set(names.tolist())),
-                         "nets": cfg.ensemble, "cv": cv}}
-    model = export.to_json(trained, cfg.spec, args.out.stem, x, meta)
+    meta = {"training": {"config": args.config, "inputs": cfg.inputs, "samples": int(len(x)),
+                         "routes": sorted(set(names.tolist())), "nets": cfg.ensemble, "cv": cv}}
+    model = export.to_json(trained, cfg.spec, args.out.stem, x, meta, curve_gain=cfg.curve_gain)
     export.save(model, args.out)
     # 내보낸 파일이 학습한 망과 같은 값을 내는지
     reloaded = export.load(args.out)

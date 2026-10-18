@@ -43,6 +43,17 @@ gzip -9 dataset/<car>/*.csv
 edgepilot decodes the K7's CAN (MDPS12, ESP12). On another car its CAN
 decoding has to be ported first; the columns stay the same.
 
+The chosen setup (`k7_hev_v4`'s) also needs each route's runtime inputs, the
+values edgepilot's controller built from the plan at each moment. Only
+edgepilot's `replay_controls` can make them, from the recordings:
+
+```sh
+scripts/dump_runtime_inputs.sh <edgepilot> <recordings dir> dataset/<car>
+```
+
+Without edgepilot recordings, train the setup that needs only the CSVs,
+`"A + mirror, 3 nets, friction-free"` (`k7_hev_v3`'s).
+
 **From other logs:** write the columns yourself.
 [`examples/write_csv.py`](../examples/write_csv.py) takes one array per column,
 checks lengths and time order, fills the optional columns and writes the
@@ -101,6 +112,8 @@ sent torque as the target).
 .venv/bin/python scripts/coverage.py dataset/<car>
 .venv/bin/python scripts/experiments.py dataset/<car> runs/<car>.json
 .venv/bin/python scripts/train_final.py dataset/<car> models/<car>_v1.json
+# from CSVs only:
+.venv/bin/python scripts/train_final.py dataset/<car> models/<car>_v1.json "A + mirror, 3 nets, friction-free"
 ```
 
 - **`coverage.py`:** hours per drive, usable minutes on a speed × lateral
@@ -110,7 +123,10 @@ sent torque as the target).
   `nnlc/configs.py`, against a linear model fitted on the same folds.
 - **`train_final.py`:** trains the chosen setup on every drive and exports
   it. The steady-state table it prints should rise monotonically and be
-  symmetric about a small straight-driving bias.
+  symmetric about a small straight-driving bias. It writes the setup's
+  `curve_gain` into the file; that value was calibrated for the K7 in
+  edgepilot's closed-loop replay, so recalibrate it for another car (set it in
+  `nnlc/configs.py`, or 0 to start without).
 
 ## 5. Use the model
 

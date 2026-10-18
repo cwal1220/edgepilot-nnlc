@@ -15,12 +15,16 @@ one is trained from edgepilot's own drives, which are included
 The model is an inverse steering model. It looks at a lateral-acceleration
 trajectory around the moment the car responds, and gives the torque command
 that produced it. In edgepilot the same model is fed the desired trajectory
-and gives the feedforward torque.
+and gives the feedforward torque. `k7_hev_v3` learns from the trajectory that
+happened; `k7_hev_v4` learns from the inputs edgepilot's controller built at
+each moment (runtime inputs), so training sees what the model sees on the road.
 
 ```mermaid
 flowchart LR
     rec["edgepilot recordings"] --> ext["extract_lateral_dataset<br>one CSV per route"]
-    ext --> ds["samples<br>33 inputs → torque"]
+    rec --> dump["replay_controls --nn-inputs<br>runtime inputs per route"]
+    ext --> ds["samples<br>inputs → torque"]
+    dump --> ds
     ds --> cv["route-level<br>5-fold CV"]
     ds --> final["train_final.py"]
     final --> model["models/*.json"]
@@ -33,16 +37,17 @@ flowchart LR
 | --- | --- |
 | `nnlc/csvdata.py` | reads the extractor CSVs and picks usable rows |
 | `nnlc/series.py` | resamples each route to 100 Hz continuous segments |
-| `nnlc/dataset.py` | builds samples (`Spec`: lag, windows, extra inputs) and the left/right mirror |
+| `nnlc/dataset.py` | builds samples from the trajectory that happened (`Spec`: lag, windows, extra inputs) and the left/right mirror |
+| `nnlc/runtime.py` | builds samples from edgepilot's runtime inputs (`k7_hev_v4`), with a clock check per route |
 | `nnlc/friction.py` | edgepilot's friction compensation share, recomputed from the recorded curvatures |
 | `nnlc/models.py` | the MLP, sunnypilot's network shape, and the linear baseline |
 | `nnlc/training.py` | training, sample weights and route-level cross-validation |
 | `nnlc/configs.py` | the configurations in the results table, and the chosen one |
 | `nnlc/export.py` | the model file edgepilot reads, and a numpy reference evaluator |
 | `scripts/` | command-line steps (below) |
-| `tests/` | sample alignment, mirroring, export round-trip and the friction share |
-| `models/` | exported models (`k7_hev_v3` is the one edgepilot ships) |
-| `dataset/k7_hev/` | the K7 HEV drives, one gzipped CSV each |
+| `tests/` | sample alignment, runtime-input pairing, mirroring, export round-trip and the friction share |
+| `models/` | exported models (`k7_hev_v3` and `k7_hev_v4`, both shipped by edgepilot) |
+| `dataset/k7_hev/` | the K7 HEV drives, one gzipped CSV each and its runtime inputs (`.inputs.csv.gz`) |
 | `docs/` | the data format and the guide for other cars |
 | `examples/` | a quick start, a 30 s sample CSV, and a CSV writer for other logs |
 | `data/`, `runs/` | local CSVs and experiment output (not tracked) |
@@ -76,6 +81,14 @@ examples/quickstart.sh
    scripts/extract_routes.sh ../edgepilot/build-host <recordings dir> dataset/<car>
    ```
 
+   For the runtime-input setup (`k7_hev_v4`), also write each route's runtime
+   inputs next to its CSV. This needs edgepilot's host tools and the
+   recordings themselves, not only the CSVs:
+
+   ```sh
+   scripts/dump_runtime_inputs.sh ../edgepilot <recordings dir> dataset/<car>
+   ```
+
 2. See how much usable data there is, and check the signs:
 
    ```sh
@@ -88,10 +101,12 @@ examples/quickstart.sh
    .venv/bin/python scripts/experiments.py dataset/k7_hev runs/exp.json
    ```
 
-4. Train the chosen setup on every route and export it:
+4. Train the chosen setup on every route and export it (the runtime-input
+   setup; name `"A + mirror, 3 nets, friction-free"` for `v3`'s, which needs
+   only the CSVs):
 
    ```sh
-   .venv/bin/python scripts/train_final.py dataset/k7_hev models/k7_hev_v3.json
+   .venv/bin/python scripts/train_final.py dataset/k7_hev models/k7_hev_v4.json
    ```
 
 5. Run the tests:
@@ -137,6 +152,17 @@ examples/quickstart.sh
 - **Mirror augmentation:** each training sample is also used flipped left to
   right. `la`, jerk and roll change sign, the angle flips about its zero, and
   the torque flips about the straight-driving bias.
+- **Runtime inputs** (`Cfg.inputs = "runtime"`, `k7_hev_v4`): instead of the
+  trajectory that happened, the inputs come from `<route>.inputs.csv.gz`. These
+  are the values edgepilot's controller built from the recorded plan and its
+  history at each 20 Hz tick, written by `replay_controls --nn-inputs` (open
+  loop: the planner and controller run on the recorded model output and CAN).
+  Each row is paired with the nearest 100 Hz point of the route's CSV (within
+  6 ms) for the target and the usable rows. Before that, `nnlc/runtime.py`
+  checks the two clocks: the ESP12 longitudinal acceleration is in both
+  files, and its correlation has to peak at 0 (within 30 ms), or the route is
+  skipped with a message. The 25 K7 drives with runtime inputs peak at 0 ms;
+  the 26th has no usable rows and an empty file.
 
 ## Results (2026-10-16)
 
@@ -177,6 +203,48 @@ little at exits. v2 alone explains the sent torque best, but it cannot react
 to the tracking error, and on the 2026-10-16 drive the car fell behind at
 curve entries.
 
+## Results (2026-10-18): curve entries, runtime inputs, curve gain
+
+On the road (10-16, 10-18) the model fell behind at curve entries, where the
+linear feed-forward did not. Measured in edgepilot's closed-loop replay (six
+drives of 10-12 to 10-18, 58 free-running minutes; curve phases as the
+simulated path's lateral acceleration over the desired one):
+
+- **The fit is not the problem.** Over the entry samples of its training data,
+  `v3`'s mean prediction is 1.01 of the torque that was sent (hold 1.00, exit
+  0.99); the linear model gives 0.84 and 1.08.
+- **Training for entries changes nothing.** Entry weights (×4, ×10), entry and
+  exit weights, a loss that counts too little torque at entries 2–4 times,
+  smoothed inputs, lateral acceleration from the yaw rate, a 64×64 network,
+  80 epochs and windows ending at +0.9 or +0.6 s all leave the replay's entry
+  at 0.88–0.89 (`v3` 0.886; another seed 0.889). Every model trained on what
+  happened gives the same feed-forward at the simulated entries (0.75 m/s²
+  against the linear feed-forward's 0.87).
+- **The runtime inputs differ.** At curve entries the plan's window is flatter
+  than what the car did (12 % larger near, 5–7 % smaller far), the jerk input
+  correlates with the trajectory's at r = 0.17, and the angle inputs run 8 %
+  high. Training on the runtime inputs (`k7_hev_v4`) puts the training and the
+  road on the same inputs, but its target is the torque that was sent, so it
+  cannot learn more than the old controller gave either. Without the steering
+  angle, whose runtime value does not pair with `la` as the measured one did,
+  the lane position on straights is closer to the linear feed-forward's.
+- **The curve gain closes the entry.** edgepilot multiplies the model's output
+  by 1 + `curve_gain` in curves (0.2→0.6 m/s², 30→50 km/h). It is calibrated
+  in the replay after training: 0.3 for both models (0.4 overshoots at exits).
+
+| Feed-forward | Entry | Held | Exit | Lane RMS, straight | In curves | Torque step RMS |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| linear | 0.93 | 0.94 | 0.97 | 11.7 cm | 25.8 cm | 2.66 |
+| `v3` | 0.89 | 0.92 | 0.95 | 12.8 cm | 27.9 cm | 2.28 |
+| `v3` + curve gain 0.3 | 0.93 | 0.95 | 0.97 | 12.7 cm | 28.4 cm | 2.31 |
+| `v4` + curve gain 0.3 | 0.94 | 0.95 | 0.96 | 11.7 cm | 25.5 cm | 2.25 |
+
+The three drives of 10-16 and 10-18 are in neither model's training. On them
+alone `v4` + gain holds curves worse than `v3` + gain (31.1 against 29.0 cm);
+its gain in the table comes from the drives it was trained on. `v4`'s
+cross-validated RMSE is 0.0537, +7.5 % on the linear model, not comparable
+with `v3`'s: the plan does not determine the PID's share of the sent torque.
+
 The study of 2026-10-16 also tried these, on the earlier extraction and folds
 (their configurations are in commit 46f08f5):
 
@@ -209,6 +277,11 @@ its web console lists them by file name and switches between them.
 - `nets`: an ensemble; each has `layers` with `weight` [out][in], `bias` and
   `activation` (`tanh` or `linear`). The outputs are averaged, then clipped to
   `output_clip`.
+- `curve_gain`: edgepilot multiplies the model's output by 1 + `curve_gain`
+  in curves (|desired lateral acceleration| 0.2→0.6 m/s², 30→50 km/h). It is
+  not used in training; the configuration's `Cfg.curve_gain` holds the value
+  calibrated in edgepilot's closed-loop replay. edgepilot refuses a value
+  outside 0 to 1 and takes a file without it as 0.
 - `linear`, `angle_model`: the linear baseline and the fitted
   `angle = a·la/v² + b·la + c`, for checks.
 - `test_vectors`: inputs and expected outputs. edgepilot evaluates them when
@@ -233,11 +306,16 @@ At run time the response-time inputs come from the desired trajectory:
 - **Roll, longitudinal accel, speed:** the current values. Training took the
   speed at t, but the longitudinal accel at the response time.
 
+A runtime-input model (`k7_hev_v4`) trains on exactly these values.
+
 ## Caveats
 
 - The numbers say how well the model explains the torque edgepilot actually
   sent. The data is closed-loop, so the model may have learned part of the
   feedback. Only a road comparison shows whether driving gets better.
+- A runtime-input model learns the closed-loop torque of the controller that
+  drove, PID included, for the plan it followed. A replay of its own training
+  drives therefore flatters it; judge it on drives it did not see.
 - Above 1.5 m/s² there are about 3 minutes of data. The mirror keeps the
   curves sane there, but their accuracy is unverified. Engaged drives on ramps
   and winding roads would help.

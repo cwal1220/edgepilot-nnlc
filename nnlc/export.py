@@ -5,6 +5,8 @@
 - input_mean, input_std: (x - mean) / std로 정규화한다.
 - nets: 같은 입력을 받는 망 여러 개(앙상블). 출력은 평균한 뒤 output_clip으로 자른다.
   layers마다 weight [출력][입력], bias [출력], activation "tanh" | "linear".
+- curve_gain: edgepilot이 곡선(|목표 횡가속| 0.2→0.6 m/s², 30→50 km/h)에서 모델 출력을 (1 + 이것)배로 쓴다. 학습에는
+  쓰지 않고 폐루프 재생으로 정한 값이다(설정의 Cfg.curve_gain, 0이면 그대로).
 - linear, angle_model: 비교·시험용 정보(torqued식 선형 계수, 조향각 = a·la/v² + b·la + c).
 - test_vectors: 원래 단위 입력과 기대 출력. edgepilot은 불러올 때 이것을 다시 계산해 맞아야 쓴다.
 - input_tests: 합성 궤적(지금 앞뒤 la·조향각, 100 Hz)과 학습 코드(dataset.rows)가 거기서 만든 입력. edgepilot 단위
@@ -83,7 +85,10 @@ def _finite(value):
     return value
 
 
-def to_json(trained, spec: Spec, name: str, x_train: np.ndarray, meta: dict, n_vectors: int = 16) -> dict:
+def to_json(trained, spec: Spec, name: str, x_train: np.ndarray, meta: dict, n_vectors: int = 16,
+            curve_gain: float = 0.0) -> dict:
+    if not 0.0 <= curve_gain <= 1.0:
+        raise ValueError(f"curve_gain {curve_gain} outside [0, 1] (edgepilot refuses the file)")
     rng = np.random.default_rng(0)
     pick = x_train[rng.choice(len(x_train), n_vectors, replace=False)]
     model = {
@@ -91,6 +96,7 @@ def to_json(trained, spec: Spec, name: str, x_train: np.ndarray, meta: dict, n_v
         "features": trained.features, "spec": {k: (list(v) if isinstance(v, tuple) else v) for k, v in asdict(spec).items()},
         "input_mean": trained.mean.astype(float).tolist(), "input_std": trained.std.astype(float).tolist(),
         "nets": [{"layers": _layers(net)} for net in trained.nets], "output_clip": [-1.0, 1.0],
+        "curve_gain": float(curve_gain),
         "linear": dict(zip("abcd", trained.linear.astype(float).tolist())),
         "angle_model": dict(zip("abc", angle_zero(x_train, trained.features).astype(float).tolist()))
         if "angle" in trained.features else None,

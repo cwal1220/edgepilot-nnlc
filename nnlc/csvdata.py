@@ -25,9 +25,12 @@ def route_name(csv: Path) -> str:
 
 
 def route_files(csv_dir: Path) -> list[Path]:
-    """폴더의 경로 CSV(.csv, .csv.gz), 이름순. 같은 경로가 둘 다 있으면 .csv를 쓴다."""
+    """폴더의 경로 CSV(.csv, .csv.gz), 이름순. 같은 경로가 둘 다 있으면 .csv를 쓴다. 옆의 운용 입력 파일
+    (<경로>.inputs.csv, nnlc.runtime)은 경로가 아니다."""
     files = {}
     for path in sorted(Path(csv_dir).glob("*.csv.gz")) + sorted(Path(csv_dir).glob("*.csv")):
+        if route_name(path).endswith(".inputs"):
+            continue
         files[route_name(path)] = path
     return [files[k] for k in sorted(files)]
 

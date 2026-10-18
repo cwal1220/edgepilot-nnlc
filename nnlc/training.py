@@ -1,6 +1,7 @@
 """학습과 주행 단위 교차 검증.
 
-- Cfg 하나가 입력(Spec), 모델, 학습 길이, 앙상블 크기, 증강을 정한다.
+- Cfg 하나가 입력(Spec과 그 출처), 모델, 학습 길이, 앙상블 크기, 증강을 정한다. 입력 출처는 실제 궤적(dataset.build)
+  또는 운용 입력(nnlc.runtime.build_runtime, k7_hev_v4부터)이다.
 - 교차 검증은 경로를 날짜순으로 이어 표본 수가 비슷한 다섯 묶음(folds)으로 나누고 차례로 빼서 학습한다. epoch 수를
   고정하고 검증 fold로 고르지 않는다. 정규화, 가중치, 선형 기준 모델은 학습 fold에서만 구한다. 망 수는 내보내는 모델과
   같다(Cfg.ensemble).
@@ -16,6 +17,7 @@ from torch import nn
 
 from nnlc.dataset import Spec, build, mirrored
 from nnlc.models import Mlp, SpNet, fit_linear, torqued_like
+from nnlc.runtime import build_runtime
 
 DEVICE = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 LA_EDGES = [0, 0.25, 0.5, 1.0, 1.5, 99]
@@ -31,6 +33,10 @@ class Cfg:
     lr: float = 3e-3
     ensemble: int = 1           # 시드마다 하나씩 학습해 평균하는 망 수
     mirror: bool = False        # 좌우 대칭 증강(학습 fold에만)
+    inputs: str = "realized"    # realized(실제 궤적) | runtime(edgepilot 운용 입력, nnlc.runtime)
+    # 학습에는 쓰지 않는다: 모델 파일의 curve_gain(곡선에서 모델 출력을 1 + 이것 배로, edgepilot TorqueController).
+    # 학습 뒤 edgepilot 폐루프 재생으로 정한 값을 둔다(README "Curve gain").
+    curve_gain: float = 0.0
 
 
 def make_weights(la: np.ndarray) -> np.ndarray:
@@ -79,8 +85,10 @@ def rmse(la: np.ndarray, y: np.ndarray, p: np.ndarray, lo: float = 0.0) -> float
 
 
 @functools.lru_cache(maxsize=None)
-def dataset(csv_dir: str, spec: Spec):
-    return build(Path(csv_dir), spec)
+def dataset(csv_dir: str, spec: Spec, inputs: str = "realized"):
+    if inputs not in ("realized", "runtime"):
+        raise ValueError(f"inputs {inputs!r}: realized or runtime")
+    return (build_runtime if inputs == "runtime" else build)(Path(csv_dir), spec)
 
 
 @dataclass
@@ -124,7 +132,7 @@ def folds(names: np.ndarray, n: int = N_FOLDS) -> list[list[str]]:
 
 
 def cross_validate(csv_dir: Path, cfg: Cfg) -> dict:
-    x, y, names, _ = dataset(str(csv_dir), cfg.spec)
+    x, y, names, _ = dataset(str(csv_dir), cfg.spec, cfg.inputs)
     res = {k: [] for k in ("base", "model", "base_05", "model_05", "base_10", "model_10")}
     for val in folds(names):
         vm = np.isin(names, val)

@@ -79,3 +79,23 @@ valid and the model frame is fresh.
 (`tq_norm − curve_w·fric` with the default `friction_free`), and the inputs
 around the response time t + 0.3 s, taken at 20 Hz. See the README's
 "Samples" section.
+
+## Runtime inputs
+
+A runtime-input setup (`Cfg.inputs = "runtime"`) also reads
+`<drive>.inputs.csv` (or `.inputs.csv.gz`) next to the drive's CSV. edgepilot's
+`replay_controls --nn-inputs` writes it (`scripts/dump_runtime_inputs.sh`):
+
+- one row per 20 Hz control tick at which the learned model ran, in an open-loop
+  replay of the recording;
+- `t`: seconds since the drive's earliest record, the same clock as the drive
+  CSV's `t`;
+- then one column per model input, named as in a model file's `features`
+  (`k7_hev_v3`'s 33: `v`, `la`, `jerk`, `roll`, `la-0.5` … `la+1.5`,
+  `roll-0.3` … `roll+1.5`, `angle`, `long`, `angle-0.30` … `angle+1.50`).
+  A setup with fewer inputs picks its own by name.
+
+`nnlc/runtime.py` pairs each row with the drive CSV's nearest 100 Hz point
+(within 6 ms) for the target and the usable-row test, and skips a drive whose
+two clocks disagree (the `long` column of both files peaks its correlation
+away from 0).

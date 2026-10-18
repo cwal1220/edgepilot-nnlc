@@ -6,7 +6,8 @@
   학습은 실제로 일어난 궤적을 쓰고, 운용 때는 같은 자리에 목표 궤적을 넣는다(역동역학: 이 궤적을 만든 토크).
 - 표본은 t와 t + lag가 모두 usable이고, 창 전체가 한 연속 구간 안에 있고, 창 안에 차선 변경·깜빡이가 없을 때만
   쓴다. 100 Hz 격자에서 stride마다 하나(기본 5 = 20 Hz).
-- Spec이 창과 추가 입력을 정한다. SP18은 sunnypilot NNLC 입력 18개와 같고, CHOSEN은 비교 실험에서 고른 33개다.
+- Spec이 창과 추가 입력을 정한다. SP18은 sunnypilot NNLC 입력 18개와 같고, CHOSEN은 비교 실험에서 고른 33개,
+  NO_ANGLE은 거기서 조향각 입력을 뺀 25개다.
 """
 from dataclasses import dataclass
 from pathlib import Path
@@ -39,7 +40,10 @@ class Spec:
 SP18 = Spec()
 CHOSEN = Spec(la_past=(-0.5, -0.4, -0.3, -0.2, -0.1), la_future=(0.1, 0.2, 0.3, 0.45, 0.6, 0.8, 1.0, 1.5),
               extra=("angle", "long"), extra_windows=(("angle", (-0.3, -0.2, -0.1, 0.3, 0.6, 1.0, 1.5)),))
-assert len(SP18.names()) == 18 and len(CHOSEN.names()) == 33
+# CHOSEN에서 조향각 입력을 뺀 25개(k7_hev_v4). 운용의 조향각 입력은 실측이 아니라 계획 곡률을 지금 차량 모델로 뒤집은
+# 값이라, 그 주행의 차량 모델로 잰 학습 쪽 조향각·la 쌍과 어긋난다(곡선 진입에서 8 % 크다).
+NO_ANGLE = Spec(la_past=CHOSEN.la_past, la_future=CHOSEN.la_future, extra=("long",))
+assert len(SP18.names()) == 18 and len(CHOSEN.names()) == 33 and len(NO_ANGLE.names()) == 25
 
 
 def _steps(offsets) -> list[int]:

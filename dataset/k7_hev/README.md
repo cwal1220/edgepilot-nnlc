@@ -59,6 +59,14 @@ Usable minutes by speed and |lateral acceleration| (m/s²):
 | 2026-10-14--19-09-44-760 | 0.85 | 0.58 | 0.46 | 8.7 |
 | 2026-10-15--03-14-59-306 | 0.22 | 0.16 | 0.13 | 2.3 |
 
+Each drive also has its runtime inputs, `<drive>.inputs.csv.gz` (62 MB in
+all): the inputs edgepilot's controller built at each 20 Hz tick, written by
+`scripts/dump_runtime_inputs.sh` on 2026-10-18 with edgepilot's
+`params/steering.json` and each route's own `params/live_parameters.json`
+([Data format](../../docs/data-format.md#runtime-inputs)). Both clocks agree
+to 0 ms on every drive but 2026-10-04--08-59-31-512, which has no usable rows
+and an empty file.
+
 Train on it directly:
 
 ```sh
