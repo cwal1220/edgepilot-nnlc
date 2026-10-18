@@ -105,7 +105,8 @@ examples/quickstart.sh
 - **Target:** the torque edgepilot sent at time t (`tq_norm`: sign-corrected,
   divided by `steer_max`), minus the friction share edgepilot adds to the
   model in curves (the default, `Spec.friction_free`; see below). With
-  `friction_free=False` it is the sent torque itself, as for `k7_hev_v2`.
+  `friction_free=False` it is the sent torque itself, as for the earlier
+  `k7_hev_v2`.
 - **Inputs:** counted from the response time t + lag (0.3 s), except the
   speed, which is taken at t.
   - Lateral acceleration `la = actual curvature × v²`, its jerk, and road
@@ -189,9 +190,11 @@ Without the mirror, a larger model flattened out at 30 m/s for positive `la`,
 outside the data. With it, the steady-state curves are monotonic and symmetric
 about a small straight-driving bias (+0.03) at every speed.
 
-`models/k7_hev_v1.json` is the first model, trained on the CSVs read in file
-order. That order dropped 13 % of the samples (see edgepilot
-`docs/diagnostics.md`).
+The first model, `k7_hev_v1`, was trained on the CSVs read in file order. That
+order dropped 13 % of the samples (see edgepilot `docs/diagnostics.md`). It and
+`k7_hev_v2`, which learned the sent torque with the friction in it, were removed
+from `models/` on 2026-10-17; git history keeps them, and every edgepilot route
+keeps the model it ran as `models/lateral_nn.json`.
 
 ## Model file
 
