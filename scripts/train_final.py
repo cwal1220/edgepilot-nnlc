@@ -10,17 +10,19 @@
   조향각 = a·la/v² + b·la + c로 만든다. 좌우 대칭과 단조 증가를 눈으로 확인한다.
 """
 import argparse
-import json
+import platform
+import subprocess
 import sys
 from pathlib import Path
 
 import numpy as np
+import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from nnlc import export  # noqa: E402
 from nnlc.configs import CHOSEN, CONFIGS  # noqa: E402
 from nnlc.models import torqued_like  # noqa: E402
-from nnlc.training import cross_validate, dataset, evaluate, train  # noqa: E402
+from nnlc.training import DEVICE, cross_validate, dataset, evaluate, train  # noqa: E402
 
 PROBE_LA = [-3, -2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2, 3]
 
@@ -36,12 +38,24 @@ def steady_inputs(features: list[str], v: float, la: float, angle_model: dict | 
     return [row[f] for f in features]
 
 
+def environment() -> dict:
+    """모델을 만든 환경(모델 파일 training.environment): 같은 결과를 다시 내려면 필요하다."""
+    root = Path(__file__).resolve().parent.parent
+    try:
+        commit = subprocess.run(["git", "describe", "--always", "--dirty"], cwd=root, capture_output=True, text=True,
+                                check=True).stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        commit = "unknown"
+    return {"nnlc": commit, "device": str(DEVICE), "torch": torch.__version__, "numpy": np.__version__,
+            "python": platform.python_version()}
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("csv_dir", type=Path)
     ap.add_argument("out", type=Path)
     ap.add_argument("config", nargs="?", default=CHOSEN)
-    ap.add_argument("--no-cv", action="store_true", help="교차 검증 지표를 다시 계산하지 않는다")
+    ap.add_argument("--no-cv", action="store_true", help="do not recompute the cross-validation figures")
     args = ap.parse_args()
     cfg = CONFIGS[args.config]
     export.check_exportable(cfg)
@@ -49,7 +63,8 @@ def main():
     trained = train(cfg, x, y)
     cv = None if args.no_cv else cross_validate(args.csv_dir, cfg)
     meta = {"training": {"config": args.config, "inputs": cfg.inputs, "samples": int(len(x)),
-                         "routes": sorted(set(names.tolist())), "nets": cfg.ensemble, "cv": cv}}
+                         "routes": sorted(set(names.tolist())), "nets": cfg.ensemble, "cv": cv,
+                         "environment": environment()}}
     model = export.to_json(trained, cfg.spec, args.out.stem, x, meta, curve_gain=cfg.curve_gain)
     export.save(model, args.out)
     # 내보낸 파일이 학습한 망과 같은 값을 내는지
@@ -60,7 +75,7 @@ def main():
     if cv:
         print(f"CV RMSE {cv['model']:.4f} ({cv['gain']:+.1%} vs linear), |la|>=1 {cv['model_10']:.4f} "
               f"({cv['gain_10']:+.1%})")
-    print("일정 커브 토크(정규화), 열: 횡가속 m/s²")
+    print("steady-curve torque (normalised), columns: lateral accel m/s²")
     print(f"{'':12s}" + "".join(f"{l:>7}" for l in PROBE_LA))
     for v in (10, 20, 30):
         rows = np.array([steady_inputs(trained.features, v, la, model["angle_model"]) for la in PROBE_LA])

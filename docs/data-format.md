@@ -61,13 +61,16 @@ column has the wrong sign.
 | `steer_fault` | 0/1 | temporary EPS fault | row filter |
 | `blinker` | 0/1 | either turn signal on | row filter |
 | `eps_out_tq` | raw | torque the EPS applied, left + (K7: MDPS12 OutTq − 2048); 0 when unknown | no (`coverage.py` sign check) |
+| `nn_ff` | 0/1 | the learned model gave that tick's feed-forward (edgepilot `hud_flags` bit 12); files from before 2026-10-19 lack the column and read as 0 | row filter |
 
 ## From rows to samples
 
 `nnlc/csvdata.py` keeps a row when lateral control is active, the EPS takes
 the torque, there is no EPS fault, lane change or blinker, the driver torque
 is under the threshold, the speed is over 3 m/s, the lateral acceleration is
-valid and the model frame is fresh.
+valid, the model frame is fresh and the feed-forward was the linear one: a
+tick the learned model drove already has its curve gain in the sent torque,
+so learning from it would count the gain twice.
 
 `nnlc/series.py` resamples each run of rows to a 100 Hz grid and computes:
 

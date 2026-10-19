@@ -136,7 +136,9 @@ examples/quickstart.sh
   - lateral control active and the EPS taking LKAS torque, with no EPS fault;
   - no lane change or blinker anywhere in the window;
   - driver torque under 100 and speed over 3 m/s;
-  - fresh lateral acceleration and model data.
+  - fresh lateral acceleration and model data;
+  - the linear feed-forward in use (`nn_ff` 0): a tick the learned
+    model drove already carries its curve gain.
 
   Samples are taken at 20 Hz.
 - **Friction-free target** (`Spec.friction_free`, the default; config "A +
@@ -161,8 +163,8 @@ examples/quickstart.sh
   6 ms) for the target and the usable rows. Before that, `nnlc/runtime.py`
   checks the two clocks: the ESP12 longitudinal acceleration is in both
   files, and its correlation has to peak at 0 (within 30 ms), or the route is
-  skipped with a message. The 25 K7 drives with runtime inputs peak at 0 ms;
-  the 26th has no usable rows and an empty file.
+  skipped with a message. The 25 K7 drives with runtime inputs peak at
+  0–10 ms; the 26th has no usable rows and an empty file.
 
 ## Results (2026-10-16)
 
@@ -184,14 +186,14 @@ folds (0.0604 overall, 0.1187 at |la| ≥ 1).
 | + mirror augmentation | 0.0423 | 0.0808 | +30 % |
 | + three nets averaged (`k7_hev_v2`) | 0.0414 | 0.0777 | +31 % (+35 % at \|la\| ≥ 1) |
 
-These rows use the sent torque as the target (`friction_free=False`). The
-chosen setup since 2026-10-17 trains the same network on the friction-free
-target (`k7_hev_v3`). The model then needs the controller's friction term, so
-it is compared together with it. Against the torque that was sent, held out
-by the same folds (RMSE and the bias in the curve's direction, in raw torque
-units of 384, |la| ≥ 0.5):
+These rows use the sent torque as the target (`friction_free=False`). The setup
+chosen on 2026-10-17 trained the same network on the friction-free target
+(`k7_hev_v3`; since 2026-10-18 the chosen one is `k7_hev_v4`, below). The model
+then needs the controller's friction term, so it is compared together with it.
+Against the torque that was sent, held out by the same folds (RMSE and the bias
+in the curve's direction, in raw torque units of 384, |la| ≥ 0.5):
 
-| Phase | v2 alone | v2 + curve friction | **v3 + curve friction (chosen)** |
+| Phase | v2 alone | v2 + curve friction | **v3 + curve friction (chosen 10-17)** |
 | --- | ---: | ---: | ---: |
 | entry | 28.0 (−1.3) | 34.3 (+11.3) | **32.3 (−0.5)** |
 | hold | 23.4 | 25.4 | **24.2** |

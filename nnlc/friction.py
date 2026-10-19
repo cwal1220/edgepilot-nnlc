@@ -29,7 +29,8 @@ DEADZONE_DEG = 1.0
 STEER_RATIO, WHEELBASE, MASS, CENTER_TO_FRONT_RATIO, STIFFNESS_FACTOR = 16.3, 2.855, 1816.0, 0.4, 1.0
 
 
-def slip_factor(mass=MASS, wheelbase=WHEELBASE, ratio=CENTER_TO_FRONT_RATIO, stiffness_factor=STIFFNESS_FACTOR) -> float:
+def slip_factor(mass=MASS, wheelbase=WHEELBASE, ratio=CENTER_TO_FRONT_RATIO,
+                stiffness_factor=STIFFNESS_FACTOR) -> float:
     """상류 VehicleModel의 슬립 계수(scale_tire_stiffness, 혼다 시빅 기준값)."""
     civic_mass, civic_wb = 1326.0 + 136.0, 2.70
     civic_front = civic_wb * 0.4

@@ -87,6 +87,7 @@ negate them for the right-positive columns.
 | `steer_fault` | `carState.steerFaultTemporary` |
 | `blinker` | `carState.leftBlinker` or `rightBlinker` |
 | `eps_out_tq` | `carState.steeringTorqueEps`, optional |
+| `nn_ff` | 1 where a learned feed-forward drove the tick, else 0 |
 
 Put the files in `dataset/<car>/`, gzipped or not, named by date
 (`YYYY-MM-DD--hh-mm-ss-mmm`). Cross-validation folds the drives in name order.

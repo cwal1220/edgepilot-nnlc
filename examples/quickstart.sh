@@ -7,5 +7,6 @@ cd "$(dirname "$0")/.."
 py=${PY:-.venv/bin/python}
 data=${1:-dataset/k7_hev}
 "$py" scripts/coverage.py "$data"
-"$py" scripts/experiments.py "$data" runs/quickstart_cv.json "A + mirror, 3 nets, friction-free"
+chosen=$("$py" -c 'from nnlc.configs import CHOSEN; print(CHOSEN)')  # 고른 설정(운용 입력이라 .inputs.csv.gz가 쓰인다)
+"$py" scripts/experiments.py "$data" runs/quickstart_cv.json "$chosen"
 "$py" scripts/train_final.py "$data" runs/quickstart_model.json --no-cv

@@ -16,7 +16,8 @@ def main():
     csv_dir, out_path = Path(sys.argv[1]), Path(sys.argv[2])
     names = sys.argv[3:] or list(CONFIGS)
     results = json.loads(out_path.read_text()) if out_path.exists() else {}
-    print(f"{'config':28s} {'RMSE':>7s} {'gain':>6s} {'|la|>=.5':>8s} {'gain':>6s} {'|la|>=1':>8s} {'gain':>6s} {'sec':>5s}")
+    print(f"{'config':28s} {'RMSE':>7s} {'gain':>6s} {'|la|>=.5':>8s} {'gain':>6s} {'|la|>=1':>8s} {'gain':>6s} "
+          f"{'sec':>5s}")
     for name in names:
         t0 = time.time()
         r = cross_validate(csv_dir, CONFIGS[name])

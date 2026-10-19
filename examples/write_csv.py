@@ -17,9 +17,10 @@ from nnlc.csvdata import COLS, HEADER  # noqa: E402
 
 # 꼭 있어야 하는 열(단위·부호는 docs/data-format.md). 곡률과 횡가속, 롤은 오른쪽이 +, 조향각과 원시 토크는 왼쪽이 +.
 REQUIRED = ("t", "v", "active", "angle", "driver_tq", "apply_tq", "des_curv", "act_curv", "long", "roll", "model_age")
-# 없으면 채우는 값: 학습 조건을 막지 않는 값(지시등·desire 없음, EPS가 토크를 받음, 고장 없음, 횡가속 유효)
+# 없으면 채우는 값: 학습 조건을 막지 않는 값(지시등·desire 없음, EPS가 토크를 받음, 고장 없음, 횡가속 유효, 학습
+# 모델 없이 달림)
 DEFAULTS = {"desire": 0, "blinker": 0, "toi_active": 1, "steer_fault": 0, "lat_valid": 1, "lat": 0.0, "yaw": 0.0,
-            "eps_out_tq": 0, "bank": None, "des_la": None, "des_tq_norm": None, "tq_norm": None}
+            "eps_out_tq": 0, "nn_ff": 0, "bank": None, "des_la": None, "des_tq_norm": None, "tq_norm": None}
 FUTURE = ((0.3, "03"), (0.6, "06"), (1.0, "10"), (1.5, "15"))
 
 
@@ -45,7 +46,8 @@ def write_drive_csv(path: Path, cols: dict[str, np.ndarray], steer_max: float, b
     for dt, tag in FUTURE:  # 계획이 없으면 목표 곡률을 그 시각만큼 앞에서 읽는다
         out.setdefault(f"la_p{tag}", np.interp(out["t"] + dt, out["t"], out["des_curv"] * v * v))
         out.setdefault(f"roll_p{tag}", out["roll"])
-    ints = {"active", "desire", "lat_valid", "toi_active", "steer_fault", "blinker", "driver_tq", "apply_tq", "eps_out_tq"}
+    ints = {"active", "desire", "lat_valid", "toi_active", "steer_fault", "blinker", "driver_tq", "apply_tq",
+            "eps_out_tq", "nn_ff"}
     opener = gzip.open if str(path).endswith(".gz") else open
     with opener(path, "wt") as f:
         f.write(",".join(HEADER) + "\n")
@@ -71,7 +73,7 @@ def demo_drive(seconds: float = 120.0, steer_max: float = 384.0) -> dict[str, np
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--demo", type=Path, required=True, help="합성 주행 CSV를 쓸 폴더")
+    ap.add_argument("--demo", type=Path, required=True, help="folder to write the synthetic drive CSVs into")
     args = ap.parse_args()
     args.demo.mkdir(parents=True, exist_ok=True)
     path = args.demo / "2026-01-01--00-00-00-000.csv.gz"

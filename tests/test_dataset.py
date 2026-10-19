@@ -8,7 +8,7 @@ from pathlib import Path
 
 import numpy as np
 
-from nnlc.csvdata import COLS, HEADER, load
+from nnlc.csvdata import COLS, HEADER, OLD_HEADER, load, usable_mask
 from nnlc.dataset import CHOSEN, SP18, build, mirrored
 from nnlc.series import segments
 
@@ -81,10 +81,25 @@ class DatasetTest(unittest.TestCase):
 
     def test_other_columns_are_refused(self):
         with tempfile.TemporaryDirectory() as d:
-            path = Path(d) / "old.csv"
-            path.write_text(",".join(HEADER[:-1]) + "\n")
+            path = Path(d) / "other.csv"
+            path.write_text(",".join(HEADER[:-2]) + "\n")
             with self.assertRaises(ValueError):
                 load(path)
+
+    def test_files_before_nn_ff_read_as_linear_drives(self):
+        """2026-10-19 전 추출기의 파일(nn_ff 열 없음)은 nn_ff 0으로 읽고, 학습 모델로 달린 행(nn_ff 1)은 학습에서
+        뺀다: 곡선 이득이 보낸 토크에 이미 들어 있다."""
+        with tempfile.TemporaryDirectory() as d:
+            old = Path(d) / "old.csv"
+            row = ["1"] * 4 + ["-"] + ["1"] * (len(OLD_HEADER) - 5)
+            old.write_text(",".join(OLD_HEADER) + "\n" + ",".join(row) + "\n")
+            self.assertEqual(load(old)["nn_ff"].tolist(), [0.0])
+            new = Path(d) / "new.csv"
+            write_csv(new, n=200, nn_ff=lambda t: (t > 1.0).astype(float))
+            data = load(new)
+            keep = usable_mask(data)
+            self.assertTrue(keep[data["t"] < 0.99].all())
+            self.assertFalse(keep[data["t"] > 1.01].any())
 
     def test_mirror_is_an_involution(self):
         rng = np.random.default_rng(0)
@@ -107,8 +122,6 @@ class DatasetTest(unittest.TestCase):
         np.testing.assert_allclose(yb[500:], y, atol=1e-6)
 
 
-if __name__ == "__main__":
-    unittest.main()
 
 
 class GzipCsvTest(unittest.TestCase):
@@ -137,3 +150,7 @@ class GzipCsvTest(unittest.TestCase):
             x1, y1, _, _ = build(packed.parent, CHOSEN)
             np.testing.assert_array_equal(x0, x1)
             np.testing.assert_array_equal(y0, y1)
+
+
+if __name__ == "__main__":
+    unittest.main()

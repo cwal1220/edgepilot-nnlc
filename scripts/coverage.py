@@ -55,14 +55,16 @@ def main():
         ti = np.clip(np.digitize(np.abs(d["tq_norm"]), TQ_EDGES) - 1, 0, len(tq_hist) - 1)
         np.add.at(tq_hist, ti[use], dt[use])
     print(f"{'total':26s} {total[0]:6.2f} {total[1]:7.2f} {total[2]:7.2f} {total[3]:7.2f}")
-    print(f"\n쓸 수 있는 표본(분), 속도(m/s) × |횡가속|(m/s²), 운전자 토크 문턱 {driver_thr:.0f}:")
-    print(f"{'v / |la|':>9s} " + " ".join(f"{f'{a}-{b}' if b < 99 else f'{a}+':>8s}" for a, b in zip(LA_EDGES, LA_EDGES[1:])))
+    print(f"\nusable samples (min), speed (m/s) x |lateral accel| (m/s²), driver torque threshold {driver_thr:.0f}:")
+    columns = (f"{a}-{b}" if b < 99 else f"{a}+" for a, b in zip(LA_EDGES, LA_EDGES[1:]))
+    print(f"{'v / |la|':>9s} " + " ".join(f"{column:>8s}" for column in columns))
     for i, (a, b) in enumerate(zip(V_EDGES, V_EDGES[1:])):
         print(f"{f'{a}-{b}':>9s} " + " ".join(f"{m:8.1f}" for m in grid[i] / 60))
-    print(f"\n|횡가속| > 0.5에서 오른쪽 {side[0] / 60:.0f}분, 왼쪽 {side[1] / 60:.0f}분")
-    print("|토크 명령| 분포(분):", " ".join(f"{a}-{b}: {m / 60:.0f}" for a, b, m in zip(TQ_EDGES, TQ_EDGES[1:], tq_hist)))
+    print(f"\n|lateral accel| > 0.5: right {side[0] / 60:.0f} min, left {side[1] / 60:.0f} min")
+    print("|torque command| distribution (min):",
+          " ".join(f"{a}-{b}: {m / 60:.0f}" for a, b, m in zip(TQ_EDGES, TQ_EDGES[1:], tq_hist)))
     if suspicious:
-        print("\n경고: 토크 부호 상관이 0 이하인 경로:", ", ".join(suspicious))
+        print("\nwarning: routes whose torque sign correlation is not positive:", ", ".join(suspicious))
 
 
 if __name__ == "__main__":

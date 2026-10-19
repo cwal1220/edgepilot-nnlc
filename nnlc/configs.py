@@ -22,9 +22,10 @@ CONFIGS = {
     "A": A,
     "A + mirror": replace(A, mirror=True),
     "A + mirror, 3 nets": replace(A, mirror=True, ensemble=3),  # k7_hev_v2
-    "A + mirror, 3 nets, friction-free": V3,  # k7_hev_v3
-    # k7_hev_v4: 운용 입력, 조향각 입력 없음. curve_gain 0.3은 edgepilot 폐루프 재생(주행 여섯)에서 곡선 진입·유지·탈출이
-    # 선형 피드포워드와 같아지는 값이다(0.4는 탈출에서 더 돈다)
+    # k7_hev_v3. 배포한 파일의 curve_gain 0.3은 v4와 같이 폐루프 재생으로 정했다(2026-10-18, 학습과 상관없는 값)
+    "A + mirror, 3 nets, friction-free": replace(V3, curve_gain=0.3),
+    # k7_hev_v4: 운용 입력, 조향각 입력 없음. curve_gain 0.3은 edgepilot 폐루프 재생(주행 여섯)에서 곡선
+    # 진입·유지·탈출이 선형 피드포워드와 같아지는 값이다(0.4는 탈출에서 더 돈다)
     "runtime inputs, no angle": replace(V3, spec=NO_ANGLE, inputs="runtime", curve_gain=0.3),
 }
 CHOSEN = "runtime inputs, no angle"

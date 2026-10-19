@@ -93,7 +93,8 @@ def to_json(trained, spec: Spec, name: str, x_train: np.ndarray, meta: dict, n_v
     pick = x_train[rng.choice(len(x_train), n_vectors, replace=False)]
     model = {
         "format": FORMAT, "version": VERSION, "name": name, "created": time.strftime("%Y-%m-%dT%H:%M:%S"),
-        "features": trained.features, "spec": {k: (list(v) if isinstance(v, tuple) else v) for k, v in asdict(spec).items()},
+        "features": trained.features,
+        "spec": {k: (list(v) if isinstance(v, tuple) else v) for k, v in asdict(spec).items()},
         "input_mean": trained.mean.astype(float).tolist(), "input_std": trained.std.astype(float).tolist(),
         "nets": [{"layers": _layers(net)} for net in trained.nets], "output_clip": [-1.0, 1.0],
         "curve_gain": float(curve_gain),
