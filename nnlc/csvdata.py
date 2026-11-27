@@ -58,8 +58,8 @@ def load(csv: Path) -> dict[str, np.ndarray]:
 def usable_mask(d: dict[str, np.ndarray], driver_thr: float = 100.0) -> np.ndarray:
     """학습에 쓸 행: 조향 활성 + EPS가 LKAS 토크를 받는 중 + EPS 고장 아님 + 차선 변경·깜빡이 없음 +
     운전자 토크 |driver_tq| < 문턱 + 속도 > 3 m/s + ESP12 횡가속 유효 + 모델 계획이 0.2 s 안에 있음 + 그 틱의
-    피드포워드가 학습 모델의 것이 아님(nn_ff: 모델의 곡선 이득이 보낸 토크에 이미 들어 있어, 다시 배우면 이득이 두 번
-    들어간다)."""
+    피드포워드가 학습 모델의 것이 아님(nn_ff: 보낸 토크에 그 모델의 출력이 이미 들어 있어, 배우면 모델이 제 출력을 다시
+    배운다. 2026-10-18 시험에서 곡선 진입이 나빠졌다. 2026-11-27 전 주행에는 모델의 곡선 이득도 들어 있다)."""
     return ((d["active"] == 1) & (d["toi_active"] == 1) & (d["steer_fault"] == 0) & (d["desire"] == 0) &
             (d["blinker"] == 0) & (np.abs(d["driver_tq"]) < driver_thr) & (d["v"] > 3.0) & (d["lat_valid"] == 1) &
             (d["model_age"] >= 0) & (d["model_age"] < 0.2) & np.isfinite(d["la_p15"]) & (d["nn_ff"] == 0))

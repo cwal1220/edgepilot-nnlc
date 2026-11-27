@@ -69,8 +69,10 @@ column has the wrong sign.
 the torque, there is no EPS fault, lane change or blinker, the driver torque
 is under the threshold, the speed is over 3 m/s, the lateral acceleration is
 valid, the model frame is fresh and the feed-forward was the linear one: a
-tick the learned model drove already has its curve gain in the sent torque,
-so learning from it would count the gain twice.
+tick the learned model drove already has that model's output in the sent
+torque (and, before 2026-11-27, its curve gain), so learning from it would
+teach the model its own output again; in the 2026-10-18 tests that made curve
+entries worse.
 
 `nnlc/series.py` resamples each run of rows to a 100 Hz grid and computes:
 

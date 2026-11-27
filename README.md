@@ -138,7 +138,8 @@ examples/quickstart.sh
   - driver torque under 100 and speed over 3 m/s;
   - fresh lateral acceleration and model data;
   - the linear feed-forward in use (`nn_ff` 0): a tick the learned
-    model drove already carries its curve gain.
+    model drove already carries that model's torque (and, until 2026-11-27,
+    its curve gain).
 
   Samples are taken at 20 Hz.
 - **Friction-free target** (`Spec.friction_free`, the default; config "A +
@@ -230,9 +231,12 @@ simulated path's lateral acceleration over the desired one):
   cannot learn more than the old controller gave either. Without the steering
   angle, whose runtime value does not pair with `la` as the measured one did,
   the lane position on straights is closer to the linear feed-forward's.
-- **The curve gain closes the entry.** edgepilot multiplies the model's output
-  by 1 + `curve_gain` in curves (0.2→0.6 m/s², 30→50 km/h). It is calibrated
-  in the replay after training: 0.3 for both models (0.4 overshoots at exits).
+- **The curve gain closed the entry.** edgepilot multiplied the model's output
+  by 1 + `curve_gain` in curves (0.2→0.6 m/s², 30→50 km/h), calibrated in the
+  replay after training: 0.3 for both models (0.4 overshot at exits).
+  edgepilot removed it on 2026-11-27: with the controller changes since, a
+  replay of 37 drives showed no entry shortfall without it and no change in
+  lane error with it (edgepilot `docs/lateral-nn.md`).
 
 | Feed-forward | Entry | Held | Exit | Lane RMS, straight | In curves | Torque step RMS |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -279,11 +283,8 @@ its web console lists them by file name and switches between them.
 - `nets`: an ensemble; each has `layers` with `weight` [out][in], `bias` and
   `activation` (`tanh` or `linear`). The outputs are averaged, then clipped to
   `output_clip`.
-- `curve_gain`: edgepilot multiplies the model's output by 1 + `curve_gain`
-  in curves (|desired lateral acceleration| 0.2→0.6 m/s², 30→50 km/h). It is
-  not used in training; the configuration's `Cfg.curve_gain` holds the value
-  calibrated in edgepilot's closed-loop replay. edgepilot refuses a value
-  outside 0 to 1 and takes a file without it as 0.
+- `curve_gain` (files from 2026-10-18 to 11-27 only): a curve gain edgepilot
+  applied until 2026-11-27 and now ignores.
 - `linear`, `angle_model`: the linear baseline and the fitted
   `angle = a·la/v² + b·la + c`, for checks.
 - `test_vectors`: inputs and expected outputs. edgepilot evaluates them when

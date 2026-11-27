@@ -34,9 +34,6 @@ class Cfg:
     ensemble: int = 1           # 시드마다 하나씩 학습해 평균하는 망 수
     mirror: bool = False        # 좌우 대칭 증강(학습 fold에만)
     inputs: str = "realized"    # realized(실제 궤적) | runtime(edgepilot 운용 입력, nnlc.runtime)
-    # 학습에는 쓰지 않는다: 모델 파일의 curve_gain(곡선에서 모델 출력을 1 + 이것 배로, edgepilot TorqueController).
-    # 학습 뒤 edgepilot 폐루프 재생으로 정한 값을 둔다(README "Curve gain").
-    curve_gain: float = 0.0
 
 
 def make_weights(la: np.ndarray) -> np.ndarray:

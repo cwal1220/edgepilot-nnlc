@@ -124,10 +124,7 @@ sent torque as the target).
   `nnlc/configs.py`, against a linear model fitted on the same folds.
 - **`train_final.py`:** trains the chosen setup on every drive and exports
   it. The steady-state table it prints should rise monotonically and be
-  symmetric about a small straight-driving bias. It writes the setup's
-  `curve_gain` into the file; that value was calibrated for the K7 in
-  edgepilot's closed-loop replay, so recalibrate it for another car (set it in
-  `nnlc/configs.py`, or 0 to start without).
+  symmetric about a small straight-driving bias.
 
 ## 5. Use the model
 

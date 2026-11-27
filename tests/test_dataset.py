@@ -88,7 +88,7 @@ class DatasetTest(unittest.TestCase):
 
     def test_files_before_nn_ff_read_as_linear_drives(self):
         """2026-10-19 전 추출기의 파일(nn_ff 열 없음)은 nn_ff 0으로 읽고, 학습 모델로 달린 행(nn_ff 1)은 학습에서
-        뺀다: 곡선 이득이 보낸 토크에 이미 들어 있다."""
+        뺀다: 보낸 토크에 그 모델의 출력이 이미 들어 있다."""
         with tempfile.TemporaryDirectory() as d:
             old = Path(d) / "old.csv"
             row = ["1"] * 4 + ["-"] + ["1"] * (len(OLD_HEADER) - 5)
